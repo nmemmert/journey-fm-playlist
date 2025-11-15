@@ -11,7 +11,6 @@ import time
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 import os
@@ -19,8 +18,10 @@ from plexapi.myplex import MyPlexAccount
 from mutagen.easyid3 import EasyID3
 import re
 from datetime import datetime
+import json
+import subprocess
 
-# Configuration
+# Configuration (defaults, will be overridden by config.json)
 PLEX_TOKEN = 'pU-m3HWYUZU6iXJFhJyA'  # Your Plex.tv token
 SERVER_IP = '172.16.16.106'  # Your local server IP
 PLAYLIST_NAME = 'Journey FM Recently Played'
@@ -52,6 +53,7 @@ def scrape_recently_played():
     html = driver.page_source
     driver.quit()
     
+    tweet = scrape(tweet_code)
     # Optional: save HTML to file for debugging (comment out if not needed)
     # with open('page.html', 'w', encoding='utf-8') as f:
     #     f.write(html)
@@ -95,7 +97,7 @@ def scrape_recently_played():
 
 def normalize_string(s):
     """Normalize string for comparison"""
-    return re.sub(r'[^\w\s]', '', s).lower().strip()
+    return re.sub(r'[^\\w\\s]', '', s).lower().strip()
 
 def find_song_in_library(artist, title, library_path):
     """Check if song exists in local library"""
@@ -131,7 +133,7 @@ def create_playlist_in_plex(plex, songs, playlist_name):
             continue
         
         # Skip entries that are ONLY punctuation (but allow titles with punctuation in them)
-        if re.match(r'^[!?\s]+$', clean_title):
+        if re.match(r'^[!?\\\\s]+$', clean_title):
             continue
         
         # Remove only ! and ? for searching, but keep apostrophes
@@ -152,7 +154,7 @@ def create_playlist_in_plex(plex, songs, playlist_name):
                 search_artist_lower = search_artist.lower()
                 
                 # Clean featured artists from search (e.g., "W/ Emerson Day", "feat. Someone")
-                search_artist_main = re.sub(r'\s+(w/|feat\.|featuring|ft\.).*', '', search_artist_lower).strip()
+                search_artist_main = re.sub(r'\s+(w/|feat\.||featuring|ft\.).*', '', search_artist_lower).strip()
                 
                 # Normalize & and + in track artist as well
                 track_artist = re.sub(r'\s*[&+]\s*', ' and ', track_artist)
@@ -199,7 +201,74 @@ def create_playlist_in_plex(plex, songs, playlist_name):
     else:
         print("No matching tracks found in Plex.")
 
+def prompt_for_config():
+    """Prompt user for configuration variables"""
+    print("Configuration not found. Please provide the following:")
+    plex_token = input("Enter your Plex token: ").strip()
+    server_ip = input("Enter your Plex server IP: ").strip()
+    playlist_name = input("Enter the playlist name: ").strip()
+    config = {
+        'PLEX_TOKEN': plex_token,
+        'SERVER_IP': server_ip,
+        'PLAYLIST_NAME': playlist_name
+    }
+    with open('config.json', 'w') as f:
+        json.dump(config, f)
+    return config
+
+def prompt_for_scheduler():
+    """Prompt user for scheduler setup"""
+    setup = input("Do you want to set up a scheduled task? (y/n): ").strip().lower()
+    if setup != 'y':
+        return None
+    print("Choose schedule type:")
+    print("1. Interval (e.g., every 15 minutes)")
+    print("2. At startup")
+    print("3. Both")
+    choice = input("Enter choice (1/2/3): ").strip()
+    if choice == '1':
+        interval = int(input("Enter interval number: ").strip())
+        unit = input("Enter unit (Minutes/Hours/Days): ").strip()
+        return {'Type': 'Interval', 'Interval': interval, 'Unit': unit}
+    elif choice == '2':
+        return {'Type': 'Startup'}
+    elif choice == '3':
+        return {'Type': 'Both'}
+    else:
+        print("Invalid choice.")
+        return None
+
+def setup_scheduler(params):
+    """Run the setup_scheduler.ps1 with parameters"""
+    cmd = ['powershell.exe', '-File', 'setup_scheduler.ps1']
+    for k, v in params.items():
+        cmd.extend(['-' + k, str(v)])
+    try:
+        subprocess.run(cmd, check=True)
+        print("Scheduler setup completed.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error setting up scheduler: {e}")
+
 def main():
+    global PLEX_TOKEN, SERVER_IP, PLAYLIST_NAME
+    # Load or prompt for config
+    if os.path.exists('config.json'):
+        with open('config.json', 'r') as f:
+            config = json.load(f)
+        PLEX_TOKEN = config.get('PLEX_TOKEN', PLEX_TOKEN)
+        SERVER_IP = config.get('SERVER_IP', SERVER_IP)
+        PLAYLIST_NAME = config.get('PLAYLIST_NAME', PLAYLIST_NAME)
+    else:
+        config = prompt_for_config()
+        PLEX_TOKEN = config['PLEX_TOKEN']
+        SERVER_IP = config['SERVER_IP']
+        PLAYLIST_NAME = config['PLAYLIST_NAME']
+    
+    # Prompt for scheduler setup
+    sched_params = prompt_for_scheduler()
+    if sched_params:
+        setup_scheduler(sched_params)
+    
     # Log start time
     start_time = datetime.now()
     print(f"\n{'='*60}")
