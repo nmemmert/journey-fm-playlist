@@ -363,18 +363,53 @@ def main():
     
     # Create Amazon buy list for missing songs
     if missing:
-        print(f"\n{len(missing)} songs not found in your library. Creating Amazon buy list...")
-        with open('amazon_buy_list.txt', 'w') as f:
-            f.write("Songs not in your library - Amazon search links:\n\n")
-            for song in missing:
-                artist = song['artist']
-                title = song['title']
-                # Create Amazon search URL
-                query = urllib.parse.quote(f"{artist} {title}")
-                url = f"https://www.amazon.com/s?k={query}&i=digital-music"
-                f.write(f"{artist} - {title}\n{url}\n\n")
-                print(f"  - {artist} - {title}: {url}")
-        print("Buy list saved to amazon_buy_list.txt")
+        print(f"\n{len(missing)} songs not found in your library. Updating Amazon buy list...")
+        
+        # Read existing buy list
+        existing_songs = set()
+        if os.path.exists('amazon_buy_list.txt'):
+            try:
+                with open('amazon_buy_list.txt', 'r') as f:
+                    content = f.read()
+                lines = content.split('\n')
+                i = 0
+                while i < len(lines):
+                    if lines[i].startswith('Songs not in your library'):
+                        i += 2  # Skip header
+                        continue
+                    if lines[i].strip() and not lines[i].startswith('http'):
+                        if ' - ' in lines[i]:
+                            artist, title = lines[i].split(' - ', 1)
+                            existing_songs.add((artist.strip(), title.strip()))
+                    i += 1
+            except Exception as e:
+                print(f"Warning: Could not read existing buy list: {e}")
+        
+        # Filter new missing songs
+        new_missing = []
+        for song in missing:
+            key = (song['artist'], song['title'])
+            if key not in existing_songs:
+                new_missing.append(song)
+                existing_songs.add(key)
+        
+        if new_missing:
+            with open('amazon_buy_list.txt', 'a') as f:  # Append mode
+                if not os.path.exists('amazon_buy_list.txt') or os.path.getsize('amazon_buy_list.txt') == 0:
+                    f.write("Songs not in your library - Amazon search links:\n\n")
+                for song in new_missing:
+                    artist = song['artist']
+                    title = song['title']
+                    # Create Amazon search URL
+                    query = urllib.parse.quote(f"{artist} {title}")
+                    url = f"https://www.amazon.com/s?k={query}&i=digital-music"
+                    f.write(f"{artist} - {title}\n{url}\n\n")
+                    print(f"  - {artist} - {title}: {url}")
+            print(f"Added {len(new_missing)} new songs to buy list.")
+        else:
+            print("No new songs to add to buy list.")
+        
+        print("Buy list updated.")
     
     # Log completion
     end_time = datetime.now()
