@@ -120,11 +120,12 @@ def find_song_in_library(artist, title, library_path):
     return None
 
 def create_playlist_in_plex(plex, songs, playlist_name):
-    """Create playlist in Plex"""
+    """Create playlist in Plex and return added count and missing songs"""
     # Assuming Plex has a music library named 'Music'
     music_library = plex.library.section('Music')
     tracks = []
     seen_keys = set()  # Track which ratingKeys we've already added to prevent duplicates within this run
+    missing = []
     
     for song in songs:
         # Clean title and artist by removing text in parentheses and normalizing spaces
@@ -176,8 +177,9 @@ def create_playlist_in_plex(plex, songs, playlist_name):
                     break
             # If no artist match, skip this track (don't add wrong songs)
             if not matched:
-                pass  # Don't add if artist doesn't match  # Take the first match
+                missing.append(song)
     
+    added = 0
     if tracks:
         try:
             # Try to find existing playlist
@@ -193,18 +195,25 @@ def create_playlist_in_plex(plex, songs, playlist_name):
                     print(f"Added {len(new_tracks)} new songs to existing playlist '{playlist_name}':")
                     for track in new_tracks:
                         print(f"  + '{track.title}' by {track.artist().title}")
+                    added = len(new_tracks)
                 else:
                     print(f"No new songs to add - all {len(tracks)} matching songs already in playlist.")
+                    added = 0
             except:
                 # Playlist doesn't exist, create it
                 plex.createPlaylist(playlist_name, tracks)
                 print(f"Created playlist '{playlist_name}' with {len(tracks)} songs:")
                 for track in tracks:
                     print(f"  + '{track.title}' by {track.artist().title}")
+                added = len(tracks)
         except Exception as e:
             print(f"Error with playlist: {e}")
+            added = 0
     else:
         print("No matching tracks found in Plex.")
+        added = 0
+    
+    return added, missing
 
 def prompt_for_config():
     """Prompt user for configuration variables"""
@@ -313,9 +322,25 @@ def main():
     
     # Create playlist
     if songs:
-        create_playlist_in_plex(plex, songs, PLAYLIST_NAME)
+        added, missing = create_playlist_in_plex(plex, songs, PLAYLIST_NAME)
     else:
         print("No songs found.")
+        added, missing = 0, []
+    
+    # Create Amazon buy list for missing songs
+    if missing:
+        print(f"\n{len(missing)} songs not found in your library. Creating Amazon buy list...")
+        with open('amazon_buy_list.txt', 'w') as f:
+            f.write("Songs not in your library - Amazon search links:\n\n")
+            for song in missing:
+                artist = song['artist']
+                title = song['title']
+                # Create Amazon search URL
+                query = f"{artist} {title}".replace(' ', '+')
+                url = f"https://www.amazon.com/s?k={query}&i=digital-music"
+                f.write(f"{artist} - {title}\n{url}\n\n")
+                print(f"  - {artist} - {title}: {url}")
+        print("Buy list saved to amazon_buy_list.txt")
     
     # Log completion
     end_time = datetime.now()
