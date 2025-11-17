@@ -4,11 +4,17 @@
 # Get the directory where this script is located
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
-# Activate virtual environment if it exists
-if [ -d "$DIR/.venv" ]; then
-    source "$DIR/.venv/bin/activate"
+# Create virtual environment if it doesn't exist
+if [ ! -d "$DIR/.venv" ]; then
+    python3 -m venv "$DIR/.venv"
 fi
+
+# Activate virtual environment
+source "$DIR/.venv/bin/activate"
+
+# Install dependencies
+pip install -r "$DIR/requirements.txt"
 
 # Run the application
 cd "$DIR"
-python journey_fm_app.py
+python3 journey_fm_app.py
