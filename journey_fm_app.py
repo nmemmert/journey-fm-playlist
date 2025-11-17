@@ -454,7 +454,6 @@ class MainWindow(QMainWindow):
 
     def show_buy_list(self):
         """Show the Amazon buy list dialog with interactive features"""
-        QMessageBox.information(self, "Debug", "Show buy list called")
         try:
             with open('amazon_buy_list.txt', 'r') as f:
                 content = f.read()
@@ -536,7 +535,7 @@ class MainWindow(QMainWindow):
         for artist_title, url in songs:
             item = QListWidgetItem(artist_title)
             item.setData(1, url)  # Store URL in item data
-            item.setCheckState(0)  # Qt.CheckState.Unchecked
+            item.setCheckState(Qt.CheckState.Unchecked)
             self.buy_list_widget.addItem(item)
 
     def filter_buy_list(self, all_songs):
@@ -549,7 +548,7 @@ class MainWindow(QMainWindow):
         """Open selected buy list items in browser"""
         for i in range(self.buy_list_widget.count()):
             item = self.buy_list_widget.item(i)
-            if item.checkState() == 2:  # Qt.CheckState.Checked
+            if item.checkState() == Qt.CheckState.Checked:
                 url = item.data(1)
                 QDesktopServices.openUrl(url)
 
@@ -558,7 +557,7 @@ class MainWindow(QMainWindow):
         to_remove = []
         for i in range(self.buy_list_widget.count()):
             item = self.buy_list_widget.item(i)
-            if item.checkState() == 2:  # Qt.CheckState.Checked
+            if item.checkState() == Qt.CheckState.Checked:
                 artist_title = item.text()
                 to_remove.append(artist_title)
 
