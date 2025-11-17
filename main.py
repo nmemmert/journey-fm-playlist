@@ -21,6 +21,8 @@ import re
 from datetime import datetime
 import json
 import subprocess
+import urllib.parse
+import urllib.parse
 
 # Configuration (defaults, will be overridden by config.json)
 PLEX_TOKEN = 'pU-m3HWYUZU6iXJFhJyA'  # Your Plex.tv token
@@ -336,7 +338,7 @@ def main():
                 artist = song['artist']
                 title = song['title']
                 # Create Amazon search URL
-                query = f"{artist} {title}".replace(' ', '+')
+                query = urllib.parse.quote(f"{artist} {title}")
                 url = f"https://www.amazon.com/s?k={query}&i=digital-music"
                 f.write(f"{artist} - {title}\n{url}\n\n")
                 print(f"  - {artist} - {title}: {url}")
