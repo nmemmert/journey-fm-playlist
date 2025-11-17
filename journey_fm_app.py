@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QLabel, QPushButton, QTextEdit, QLineEdit, QFormLayout,
     QDialog, QDialogButtonBox, QSystemTrayIcon, QMenu,
     QGroupBox, QCheckBox, QSpinBox, QComboBox, QMessageBox,
-    QProgressBar, QSplitter, QFrame, QScrollArea
+    QProgressBar, QSplitter, QFrame, QScrollArea, QTextBrowser
 )
 from PySide6.QtCore import (
     Qt, QTimer, QThread, Signal, QSettings, QSize
@@ -460,11 +460,10 @@ class MainWindow(QMainWindow):
 
         layout = QVBoxLayout()
 
-        text_edit = QTextEdit()
-        text_edit.setHtml(html_content)
-        text_edit.setReadOnly(True)
-        text_edit.setOpenExternalLinks(True)  # Allow clicking links
-        layout.addWidget(text_edit)
+        text_browser = QTextBrowser()
+        text_browser.setHtml(html_content)
+        text_browser.setOpenExternalLinks(True)  # Allow clicking links
+        layout.addWidget(text_browser)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(dialog.close)
