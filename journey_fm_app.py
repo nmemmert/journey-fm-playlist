@@ -954,14 +954,23 @@ class SystemTrayApp:
 
 def main():
     """Main application entry point"""
-    # Set up high DPI scaling
-    QApplication.setHighDpiScaleFactorRoundingPolicy(
-        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
-    )
+    try:
+        if not os.environ.get('DISPLAY'):
+            raise Exception("DISPLAY environment variable not set - no graphical display available")
+        
+        # Set up high DPI scaling
+        QApplication.setHighDpiScaleFactorRoundingPolicy(
+            Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+        )
 
-    # Create and run application
-    tray_app = SystemTrayApp()
-    sys.exit(tray_app.run())
+        # Create and run application
+        tray_app = SystemTrayApp()
+        sys.exit(tray_app.run())
+    except Exception as e:
+        print(f"Failed to start GUI application: {e}")
+        print("Make sure you have a graphical display available (X11/Wayland) and DISPLAY environment variable is set.")
+        print("If running remotely, use X forwarding or a VNC session.")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
