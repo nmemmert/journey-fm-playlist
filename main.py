@@ -32,6 +32,8 @@ PLAYLIST_NAME = 'Journey FM Recently Played'
 
 def scrape_recently_played():
     """Scrape recently played songs from multiple stations using Selenium"""
+    import platform
+    
     urls = [
         ('https://www.myjourneyfm.com/recently-played/', 'Journey FM'),
         ('https://spiritfm.com/spiritfm-recently-played/', 'Spirit FM')
@@ -47,10 +49,20 @@ def scrape_recently_played():
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
         options.add_argument("--remote-debugging-port=9222")
-        options.add_argument("--user-data-dir=/tmp/chromium")
         options.add_argument("--no-first-run")
         options.add_argument("--disable-extensions")
-        options.binary_location = "/usr/bin/chromium-browser"
+        
+        # Set binary location based on OS
+        if platform.system() == 'Windows':
+            options.binary_location = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+            options.add_argument("--user-data-dir=C:\\temp\\chromium")
+        elif platform.system() == 'Darwin':  # macOS
+            options.binary_location = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+            options.add_argument("--user-data-dir=/tmp/chromium")
+        else:  # Linux
+            options.binary_location = "/usr/bin/chromium-browser"
+            options.add_argument("--user-data-dir=/tmp/chromium")
+        
         service = Service()
         driver = webdriver.Chrome(service=service, options=options)
         
@@ -76,14 +88,46 @@ def scrape_recently_played():
         # Find elements (div, li) that contain time in their text
         song_elements = soup.find_all(lambda tag: tag.name in ['div', 'li', 'p'] and re.search(r'\d+:\d+ [AP]M', tag.get_text()))
         for element in song_elements:
-            spans = element.find_all('span')
-            if len(spans) >= 3:
-                title = spans[0].get_text().strip()
-                artist = spans[1].get_text().strip()
-                # Ignore time
-                songs.append({'artist': artist, 'title': title, 'source': source})
+            if source == 'Journey FM':
+                # Journey FM uses <strong> for title
+                strong = element.find('strong')
+                if strong:
+                    title = strong.get_text().strip()
+                    full_text = element.get_text().strip()
+                    # Remove the title and time
+                    match = re.search(r'(\d+:\d+ [AP]M)', full_text)
+                    if match:
+                        time_part = match.group(1)
+                        before_time = full_text.split(time_part)[0].strip()
+                        artist = before_time.replace(title, '').strip()
+                    else:
+                        artist = full_text.replace(title, '').strip()
+                    artist = artist.strip()
+                else:
+                    # Fallback
+                    full_text = element.get_text().strip()
+                    match = re.search(r'(\d+:\d+ [AP]M)', full_text)
+                    if match:
+                        play_time = match.group(1)
+                        before = full_text.split(play_time)[0].strip()
+                        if ' by ' in before:
+                            title, artist = before.split(' by ', 1)
+                            title = title.strip()
+                            artist = artist.strip()
+                        elif ' - ' in before:
+                            title, artist = before.split(' - ', 1)
+                            title = title.strip()
+                            artist = artist.strip()
+                        else:
+                            parts = re.findall(r'[A-Z][^A-Z]*', before)
+                            if len(parts) >= 4:
+                                title = ' '.join(parts[:2])
+                                artist = ' '.join(parts[2:])
+                            else:
+                                title = ' '.join(parts[:len(parts)//2])
+                                artist = ' '.join(parts[len(parts)//2:])
             else:
-                # Fallback to text parsing
+                # Spirit FM uses text with -
                 full_text = element.get_text().strip()
                 match = re.search(r'(\d+:\d+ [AP]M)', full_text)
                 if match:
@@ -93,19 +137,20 @@ def scrape_recently_played():
                         title, artist = before.split(' by ', 1)
                         title = title.strip()
                         artist = artist.strip()
+                    elif ' - ' in before:
+                        title, artist = before.split(' - ', 1)
+                        title = title.strip()
+                        artist = artist.strip()
                     else:
-                        # Split on capital letters
                         parts = re.findall(r'[A-Z][^A-Z]*', before)
-                        if len(parts) == 4:
+                        if len(parts) >= 4:
                             title = ' '.join(parts[:2])
                             artist = ' '.join(parts[2:])
                         else:
-                            title = ' '.join(parts[:3])
-                            artist = ' '.join(parts[3:])
-                    if title and artist:
-                        songs.append({'artist': artist, 'title': title, 'source': source})
-        
-        # Add to all_songs, avoiding duplicates
+                            title = ' '.join(parts[:len(parts)//2])
+                            artist = ' '.join(parts[len(parts)//2:])
+            if title and artist:
+                songs.append({'artist': artist, 'title': title, 'source': source})        # Add to all_songs, avoiding duplicates
         for song in songs:
             key = (song['title'].lower(), song['artist'].lower())
             if key not in seen:
