@@ -439,7 +439,6 @@ class MainWindow(QMainWindow):
 
     def show_buy_list(self):
         """Show the Amazon buy list dialog"""
-        QMessageBox.information(self, "Debug", "Buy list button clicked!")
         try:
             with open('amazon_buy_list.txt', 'r') as f:
                 content = f.read()
@@ -451,10 +450,12 @@ class MainWindow(QMainWindow):
         # Make URLs clickable
         import re
         html_content = re.sub(r'(https?://[^\s]+)', r'<a href="\1">\1</a>', html_content)
+        # Wrap in proper HTML
+        html_content = f"<html><body>{html_content}</body></html>"
 
         dialog = QDialog(self)
         dialog.setWindowTitle("Amazon Buy List")
-        dialog.setModal(False)
+        dialog.setModal(True)  # Make it modal so it shows
         dialog.resize(600, 400)
 
         layout = QVBoxLayout()
@@ -470,7 +471,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(buttons)
 
         dialog.setLayout(layout)
-        dialog.show()
+        dialog.exec()  # Use exec() for modal dialog
 
     def closeEvent(self, event):
         """Handle window close - minimize to tray instead of closing"""
