@@ -9,9 +9,9 @@ creates a playlist of matching songs, and imports it into Plex.
 
 import time
 from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.firefox.service import Service
+from webdriver_manager.firefox import GeckoDriverManager
 from selenium.webdriver.common.by import By
 from bs4 import BeautifulSoup
 import os
@@ -45,21 +45,9 @@ def scrape_recently_played():
     for url, source in urls:
         options = Options()
         options.add_argument("--headless")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--remote-debugging-port=0")
         
-        # Set binary location based on OS
-        if platform.system() == 'Windows':
-            options.binary_location = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
-        elif platform.system() == 'Darwin':  # macOS
-            options.binary_location = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-        else:  # Linux
-            options.binary_location = "/usr/bin/chromium-browser"
-        
-        service = Service()
-        driver = webdriver.Chrome(service=service, options=options)
+        service = Service(GeckoDriverManager().install())
+        driver = webdriver.Firefox(service=service, options=options)
         
         driver.get(url)
         
