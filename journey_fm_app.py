@@ -328,7 +328,7 @@ class MainWindow(QMainWindow):
         """Load settings and configure auto-update"""
         auto_update = self.config.get('AUTO_UPDATE', False)
         if auto_update:
-            interval = self.config.get('UPDATE_INTERVAL', 15)
+            interval = int(self.config.get('UPDATE_INTERVAL', 15))
             unit = self.config.get('UPDATE_UNIT', 'Minutes')
 
             # Convert to milliseconds
