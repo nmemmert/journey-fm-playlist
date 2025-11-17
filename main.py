@@ -40,6 +40,10 @@ def scrape_recently_played():
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option('useAutomationExtension', False)
     options.binary_location = "/usr/bin/google-chrome-stable"
     
     service = Service(ChromeDriverManager().install())
@@ -93,40 +97,38 @@ def scrape_recently_played():
     except Exception as e:
         print(f"Error scraping Journey FM: {e}")
     
-    # Spirit FM - uses Title - Artist format
+    # Spirit FM - loads songs from iframe text file
     try:
         print("Scraping Spirit FM...")
-        driver.get('https://spiritfm.com/spiritfm-recently-played/')
-        time.sleep(5)
+        driver.get('https://spiritfm.com/ajax/now_playing_history.txt')
+        time.sleep(3)
         
+        # Parse the plain text format: "Mon 01:45PM Artist - Title"
         soup = BeautifulSoup(driver.page_source, 'html.parser')
+        text_content = soup.get_text()
         
-        # Find all playlist items
-        items = soup.find_all(lambda tag: tag.name in ['div', 'li'] and re.search(r'\d+:\d+\s+[AP]M', tag.get_text()))
-        
-        for item in items:
-            try:
-                text = item.get_text().strip()
-                
-                # Remove time
-                time_match = re.search(r'\d+:\d+\s+[AP]M', text)
-                if time_match:
-                    before_time = text.split(time_match.group())[0].strip()
-                    
-                    # Spirit FM uses dash separator
-                    if ' - ' in before_time:
-                        parts = before_time.split(' - ', 1)
-                        title = parts[0].strip()
-                        artist = parts[1].strip()
-                        
-                        if title and artist:
-                            key = (title.lower(), artist.lower())
-                            if key not in seen:
-                                all_songs.append({'title': title, 'artist': artist, 'source': 'Spirit FM'})
-                                seen.add(key)
-                                print(f"  Found: {title} by {artist}")
-            except Exception as e:
+        # Split into lines and parse each
+        for line in text_content.split('\n'):
+            line = line.strip()
+            if not line:
                 continue
+                
+            # Match pattern: Day HH:MM(AM/PM) Artist - Title
+            match = re.match(r'^\w+\s+\d+:\d+[AP]M\s+(.+?)\s+-\s+(.+)$', line)
+            if match:
+                artist = match.group(1).strip()
+                title = match.group(2).strip()
+                
+                # Clean up HTML entities
+                artist = artist.replace('&amp;', '&')
+                title = title.replace('&amp;', '&')
+                
+                if title and artist:
+                    key = (title.lower(), artist.lower())
+                    if key not in seen:
+                        all_songs.append({'title': title, 'artist': artist, 'source': 'Spirit FM'})
+                        seen.add(key)
+                        print(f"  Found: {title} by {artist}")
                 
     except Exception as e:
         print(f"Error scraping Spirit FM: {e}")
