@@ -4,3 +4,4 @@ plexapi
 mutagen
 selenium
 webdriver-manager
+PySide6

@@ -53,7 +53,6 @@ def scrape_recently_played():
     html = driver.page_source
     driver.quit()
     
-    tweet = scrape(tweet_code)
     # Optional: save HTML to file for debugging (comment out if not needed)
     # with open('page.html', 'w', encoding='utf-8') as f:
     #     f.write(html)
@@ -259,15 +258,8 @@ def main():
         SERVER_IP = config.get('SERVER_IP', SERVER_IP)
         PLAYLIST_NAME = config.get('PLAYLIST_NAME', PLAYLIST_NAME)
     else:
-        config = prompt_for_config()
-        PLEX_TOKEN = config['PLEX_TOKEN']
-        SERVER_IP = config['SERVER_IP']
-        PLAYLIST_NAME = config['PLAYLIST_NAME']
-    
-    # Prompt for scheduler setup
-    sched_params = prompt_for_scheduler()
-    if sched_params:
-        setup_scheduler(sched_params)
+        # If no config file, use defaults (GUI should handle this)
+        pass
     
     # Log start time
     start_time = datetime.now()
