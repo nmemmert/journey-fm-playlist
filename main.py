@@ -112,7 +112,9 @@ def scrape_recently_played():
                 all_songs.append(song)
                 seen.add(key)
     
-    return all_songsdef normalize_string(s):
+    return all_songs
+
+def normalize_string(s):
     """Normalize string for comparison"""
     return re.sub(r'[^\\w\\s]', '', s).lower().strip()
 
