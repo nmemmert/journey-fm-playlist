@@ -13,6 +13,8 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 import os
 from plexapi.myplex import MyPlexAccount
@@ -31,103 +33,107 @@ SERVER_IP = '172.16.16.106'  # Your local server IP
 PLAYLIST_NAME = 'Journey FM Recently Played'
 
 def scrape_recently_played():
-    """Scrape recently played songs from multiple stations using Selenium"""
-    import platform
+    """Scrape recently played songs from Journey FM and Spirit FM"""
+    options = Options()
+    options.add_argument("--headless=new")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1920,1080")
+    options.binary_location = "/usr/bin/google-chrome-stable"
     
-    urls = [
-        ('https://www.myjourneyfm.com/recently-played/', 'Journey FM'),
-        ('https://spiritfm.com/spiritfm-recently-played/', 'Spirit FM')
-    ]
+    service = Service(ChromeDriverManager().install())
+    
+    try:
+        driver = webdriver.Chrome(service=service, options=options)
+    except Exception as e:
+        print(f"Failed to start Chrome: {e}")
+        return []
     
     all_songs = []
-    seen = set()  # To avoid duplicates
+    seen = set()
     
-    for url, source in urls:
-        options = Options()
-        options.add_argument("--headless")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
-        
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=options)
-        
-        driver.get(url)
-        
-        # Wait for initial load
-        time.sleep(10)
+    # Journey FM - uses <strong> for title, normal text for artist
+    try:
+        print("Scraping Journey FM...")
+        driver.get('https://www.myjourneyfm.com/recently-played/')
+        time.sleep(5)
         
         # Click "View More" button if exists
         try:
             more_button = driver.find_element(By.ID, "moreSongs")
             more_button.click()
-            time.sleep(10)  # Wait for more songs to load
+            time.sleep(5)
         except:
-            pass  # Button not found or already loaded
+            pass
         
-        try:
-            html = driver.page_source
-        except Exception as e:
-            print(f"Failed to get page source for {source}: {e}")
-            html = ""
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
         
-        driver.quit()
+        # Find all song items using the proper class structure
+        song_items = soup.find_all('div', class_='rp-item')
         
-        soup = BeautifulSoup(html, 'html.parser')
-        
-        songs = []
-        # Find elements (div, li) that contain time in their text
-        song_elements = soup.find_all(lambda tag: tag.name in ['div', 'li', 'p'] and re.search(r'\d+:\d+', tag.get_text()))
-        for element in song_elements:
-            spans = element.find_all('span')
-            if len(spans) >= 2:
-                title = spans[0].get_text().strip()
-                artist = spans[1].get_text().strip()
-            else:
-                # Check for strong
-                strong = element.find('strong')
-                if strong:
-                    title = strong.get_text().strip()
-                    full_text = element.get_text().strip()
-                    match = re.search(r'(\d+:\d+(?: [AP]M)?)', full_text)
-                    if match:
-                        time_part = match.group(1)
-                        before_time = full_text.split(time_part)[0].strip()
-                        artist = before_time.replace(title, '').strip()
-                    else:
-                        artist = full_text.replace(title, '').strip()
-                    artist = artist.strip()
-                else:
-                    # Fallback to text parsing
-                    full_text = element.get_text().strip()
-                    match = re.search(r'(\d+:\d+(?: [AP]M)?)', full_text)
-                    if match:
-                        play_time = match.group(1)
-                        before = full_text.split(play_time)[0].strip()
-                        if ' by ' in before:
-                            title, artist = before.split(' by ', 1)
-                            title = title.strip()
-                            artist = artist.strip()
-                        elif ' - ' in before:
-                            title, artist = before.split(' - ', 1)
-                            title = title.strip()
-                            artist = artist.strip()
-                        else:
-                            parts = re.findall(r'[A-Z][^A-Z]*', before)
-                            if len(parts) >= 4:
-                                title = ' '.join(parts[:2])
-                                artist = ' '.join(parts[2:])
-                            else:
-                                title = ' '.join(parts[:len(parts)//2])
-                                artist = ' '.join(parts[len(parts)//2:])
-            if title and artist:
-                songs.append({'artist': artist, 'title': title, 'source': source})        # Add to all_songs, avoiding duplicates
-        for song in songs:
-            key = (song['title'].lower(), song['artist'].lower())
-            if key not in seen:
-                all_songs.append(song)
-                seen.add(key)
+        for item in song_items:
+            try:
+                title_elem = item.find('h5', class_='song-title')
+                artist_elem = item.find('p', class_='song-artist')
+                
+                if title_elem and artist_elem:
+                    title = title_elem.get_text().strip()
+                    artist = artist_elem.get_text().strip()
+                    
+                    if title and artist:
+                        key = (title.lower(), artist.lower())
+                        if key not in seen:
+                            all_songs.append({'title': title, 'artist': artist, 'source': 'Journey FM'})
+                            seen.add(key)
+                            print(f"  Found: {title} by {artist}")
+            except Exception as e:
+                continue
+                
+    except Exception as e:
+        print(f"Error scraping Journey FM: {e}")
     
+    # Spirit FM - uses Title - Artist format
+    try:
+        print("Scraping Spirit FM...")
+        driver.get('https://spiritfm.com/spiritfm-recently-played/')
+        time.sleep(5)
+        
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
+        
+        # Find all playlist items
+        items = soup.find_all(lambda tag: tag.name in ['div', 'li'] and re.search(r'\d+:\d+\s+[AP]M', tag.get_text()))
+        
+        for item in items:
+            try:
+                text = item.get_text().strip()
+                
+                # Remove time
+                time_match = re.search(r'\d+:\d+\s+[AP]M', text)
+                if time_match:
+                    before_time = text.split(time_match.group())[0].strip()
+                    
+                    # Spirit FM uses dash separator
+                    if ' - ' in before_time:
+                        parts = before_time.split(' - ', 1)
+                        title = parts[0].strip()
+                        artist = parts[1].strip()
+                        
+                        if title and artist:
+                            key = (title.lower(), artist.lower())
+                            if key not in seen:
+                                all_songs.append({'title': title, 'artist': artist, 'source': 'Spirit FM'})
+                                seen.add(key)
+                                print(f"  Found: {title} by {artist}")
+            except Exception as e:
+                continue
+                
+    except Exception as e:
+        print(f"Error scraping Spirit FM: {e}")
+    
+    driver.quit()
+    
+    print(f"\nTotal unique songs found: {len(all_songs)}")
     return all_songs
 
 def normalize_string(s):
