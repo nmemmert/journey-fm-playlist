@@ -9,9 +9,9 @@ creates a playlist of matching songs, and imports it into Plex.
 
 import time
 from selenium import webdriver
-from selenium.webdriver.firefox.options import Options
-from selenium.webdriver.firefox.service import Service
-from webdriver_manager.firefox import GeckoDriverManager
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 from bs4 import BeautifulSoup
 import os
@@ -31,8 +31,16 @@ def scrape_recently_played():
     """Scrape recently played songs from myjourneyfm.com using Selenium"""
     options = Options()
     options.add_argument("--headless")
-    service = Service(GeckoDriverManager().install())
-    driver = webdriver.Firefox(service=service, options=options)
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--remote-debugging-port=9222")
+    options.add_argument("--user-data-dir=/tmp/chromium")
+    options.add_argument("--no-first-run")
+    options.add_argument("--disable-extensions")
+    options.binary_location = "/usr/bin/chromium-browser"
+    service = Service()
+    driver = webdriver.Chrome(service=service, options=options)
     
     url = 'https://www.myjourneyfm.com/recently-played/'
     driver.get(url)
