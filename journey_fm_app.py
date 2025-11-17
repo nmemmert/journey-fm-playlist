@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QLabel, QPushButton, QTextEdit, QLineEdit, QFormLayout,
     QDialog, QDialogButtonBox, QSystemTrayIcon, QMenu,
     QGroupBox, QCheckBox, QSpinBox, QComboBox, QMessageBox,
-    QProgressBar, QSplitter, QFrame, QScrollArea, QTextBrowser
+    QProgressBar, QSplitter, QFrame, QScrollArea, QTextBrowser, QTableWidget, QTableWidgetItem, QHeaderView
 )
 from PySide6.QtCore import (
     Qt, QTimer, QThread, Signal, QSettings, QSize
@@ -294,6 +294,11 @@ class MainWindow(QMainWindow):
         self.buy_list_button.clicked.connect(self.show_buy_list)
         status_layout.addWidget(self.buy_list_button)
 
+        # History button
+        self.history_button = QPushButton("View History")
+        self.history_button.clicked.connect(self.show_history)
+        status_layout.addWidget(self.history_button)
+
         status_group.setLayout(status_layout)
         splitter.addWidget(status_group)
 
@@ -471,6 +476,77 @@ class MainWindow(QMainWindow):
 
         dialog.setLayout(layout)
         dialog.exec()  # Use exec() for modal dialog
+
+    def show_history(self):
+        """Show the playlist history dialog"""
+        import sqlite3
+        import json
+        from datetime import datetime
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Playlist History")
+        dialog.setModal(True)
+        dialog.resize(800, 600)
+
+        layout = QVBoxLayout()
+
+        table = QTableWidget()
+        table.setColumnCount(4)
+        table.setHorizontalHeaderLabels(["Date", "Added Songs", "Missing Songs", "Details"])
+        table.horizontalHeader().setStretchLastSection(True)
+
+        try:
+            conn = sqlite3.connect('playlist_history.db')
+            c = conn.cursor()
+            c.execute('SELECT date, added_count, added_songs, missing_count, missing_songs FROM history ORDER BY date DESC')
+            rows = c.fetchall()
+            conn.close()
+
+            table.setRowCount(len(rows))
+            for row_idx, (date, added_count, added_songs_json, missing_count, missing_songs_json) in enumerate(rows):
+                # Parse date
+                try:
+                    dt = datetime.fromisoformat(date)
+                    date_str = dt.strftime('%Y-%m-%d %H:%M')
+                except:
+                    date_str = date
+
+                # Added songs
+                try:
+                    added_songs = json.loads(added_songs_json)
+                    added_text = f"{added_count} songs\n" + "\n".join(added_songs[:3])  # Show first 3
+                    if len(added_songs) > 3:
+                        added_text += f"\n... and {len(added_songs)-3} more"
+                except:
+                    added_text = f"{added_count} songs"
+
+                # Missing songs
+                try:
+                    missing_songs = json.loads(missing_songs_json)
+                    missing_text = f"{missing_count} songs\n" + "\n".join([f"{s['artist']} - {s['title']}" for s in missing_songs[:3]])
+                    if len(missing_songs) > 3:
+                        missing_text += f"\n... and {len(missing_songs)-3} more"
+                except:
+                    missing_text = f"{missing_count} songs"
+
+                table.setItem(row_idx, 0, QTableWidgetItem(date_str))
+                table.setItem(row_idx, 1, QTableWidgetItem(added_text))
+                table.setItem(row_idx, 2, QTableWidgetItem(missing_text))
+                table.setItem(row_idx, 3, QTableWidgetItem(f"Added: {added_count}, Missing: {missing_count}"))
+
+        except Exception as e:
+            table.setRowCount(1)
+            table.setItem(0, 0, QTableWidgetItem("Error loading history"))
+            table.setItem(0, 1, QTableWidgetItem(str(e)))
+
+        layout.addWidget(table)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dialog.close)
+        layout.addWidget(buttons)
+
+        dialog.setLayout(layout)
+        dialog.exec()
 
     def closeEvent(self, event):
         """Handle window close - minimize to tray instead of closing"""

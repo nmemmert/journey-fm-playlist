@@ -22,6 +22,7 @@ from datetime import datetime
 import json
 import subprocess
 import urllib.parse
+import sqlite3
 import urllib.parse
 
 # Configuration (defaults, will be overridden by config.json)
@@ -122,12 +123,13 @@ def find_song_in_library(artist, title, library_path):
     return None
 
 def create_playlist_in_plex(plex, songs, playlist_name):
-    """Create playlist in Plex and return added count and missing songs"""
+    """Create playlist in Plex and return added count, added songs, and missing songs"""
     # Assuming Plex has a music library named 'Music'
     music_library = plex.library.section('Music')
     tracks = []
     seen_keys = set()  # Track which ratingKeys we've already added to prevent duplicates within this run
     missing = []
+    added_songs = []
     
     for song in songs:
         # Clean title and artist by removing text in parentheses and normalizing spaces
@@ -198,6 +200,7 @@ def create_playlist_in_plex(plex, songs, playlist_name):
                     for track in new_tracks:
                         print(f"  + '{track.title}' by {track.artist().title}")
                     added = len(new_tracks)
+                    added_songs.extend([f"{track.title} by {track.artist().title}" for track in new_tracks])
                 else:
                     print(f"No new songs to add - all {len(tracks)} matching songs already in playlist.")
                     added = 0
@@ -208,14 +211,17 @@ def create_playlist_in_plex(plex, songs, playlist_name):
                 for track in tracks:
                     print(f"  + '{track.title}' by {track.artist().title}")
                 added = len(tracks)
+                added_songs.extend([f"{track.title} by {track.artist().title}" for track in tracks])
         except Exception as e:
             print(f"Error with playlist: {e}")
             added = 0
+            added_songs = []
     else:
         print("No matching tracks found in Plex.")
         added = 0
+        added_songs = []
     
-    return added, missing
+    return added, added_songs, missing
 
 def prompt_for_config():
     """Prompt user for configuration variables"""
@@ -232,27 +238,30 @@ def prompt_for_config():
         json.dump(config, f)
     return config
 
-def prompt_for_scheduler():
-    """Prompt user for scheduler setup"""
-    setup = input("Do you want to set up a scheduled task? (y/n): ").strip().lower()
-    if setup != 'y':
-        return None
-    print("Choose schedule type:")
-    print("1. Interval (e.g., every 15 minutes)")
-    print("2. At startup")
-    print("3. Both")
-    choice = input("Enter choice (1/2/3): ").strip()
-    if choice == '1':
-        interval = int(input("Enter interval number: ").strip())
-        unit = input("Enter unit (Minutes/Hours/Days): ").strip()
-        return {'Type': 'Interval', 'Interval': interval, 'Unit': unit}
-    elif choice == '2':
-        return {'Type': 'Startup'}
-    elif choice == '3':
-        return {'Type': 'Both'}
-    else:
-        print("Invalid choice.")
-        return None
+def init_history_db():
+    """Initialize the history database"""
+    conn = sqlite3.connect('playlist_history.db')
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS history (
+        id INTEGER PRIMARY KEY,
+        date TEXT,
+        added_count INTEGER,
+        added_songs TEXT,
+        missing_count INTEGER,
+        missing_songs TEXT
+    )''')
+    conn.commit()
+    conn.close()
+
+def save_history_entry(added_count, added_songs, missing_count, missing_songs):
+    """Save a history entry to the database"""
+    conn = sqlite3.connect('playlist_history.db')
+    c = conn.cursor()
+    date = datetime.now().isoformat()
+    c.execute('INSERT INTO history (date, added_count, added_songs, missing_count, missing_songs) VALUES (?, ?, ?, ?, ?)',
+              (date, added_count, json.dumps(added_songs), missing_count, json.dumps(missing_songs)))
+    conn.commit()
+    conn.close()
 
 def setup_scheduler(params):
     """Run the setup_scheduler.ps1 with parameters"""
@@ -283,6 +292,9 @@ def main():
     print(f"\n{'='*60}")
     print(f"Journey FM Playlist Update - {start_time.strftime('%Y-%m-%d %I:%M:%S %p')}")
     print(f"{'='*60}\n")
+    
+    # Initialize history database
+    init_history_db()
     
     # Scrape songs
     songs = scrape_recently_played()
@@ -324,10 +336,13 @@ def main():
     
     # Create playlist
     if songs:
-        added, missing = create_playlist_in_plex(plex, songs, PLAYLIST_NAME)
+        added, added_songs, missing = create_playlist_in_plex(plex, songs, PLAYLIST_NAME)
     else:
         print("No songs found.")
-        added, missing = 0, []
+        added, added_songs, missing = 0, [], []
+    
+    # Save to history
+    save_history_entry(added, added_songs, len(missing), missing)
     
     # Create Amazon buy list for missing songs
     if missing:
