@@ -15,19 +15,17 @@ from datetime import datetime
 from pathlib import Path
 
 # GUI imports
-from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QTextEdit, QLineEdit, QFormLayout,
-    QDialog, QDialogButtonBox, QSystemTrayIcon, QMenu,
-    QGroupBox, QCheckBox, QSpinBox, QComboBox, QMessageBox,
-    QProgressBar, QSplitter, QFrame, QScrollArea, QTextBrowser, QTableWidget, QTableWidgetItem, QHeaderView, QListWidget, QListWidgetItem
-)
-from PySide6.QtCore import (
-    Qt, QTimer, QThread, Signal, QSettings, QSize
-)
-from PySide6.QtGui import (
-    QIcon, QAction, QFont, QPixmap, QPainter, QColor, QDesktopServices
-)
+from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QPushButton, QTextEdit, QLineEdit, QLabel, QHBoxLayout, QDialog, QListWidget, QListWidgetItem, QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox, QInputDialog, QMessageBox, QProgressBar, QSystemTrayIcon, QMenu, QAction, QComboBox, QGroupBox, QFormLayout, QSpinBox, QTextBrowser, QTabWidget
+from PySide6.QtCore import QTimer, Qt, QThread, Signal, QSettings, QUrl
+from PySide6.QtGui import QIcon, QDesktopServices, QFont
+import json
+import csv
+from urllib.parse import quote
+import sqlite3
+from datetime import datetime
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
 
 # Import our existing functionality
 from main import scrape_recently_played, create_playlist_in_plex, PLEX_TOKEN, SERVER_IP, PLAYLIST_NAME
@@ -308,6 +306,11 @@ class MainWindow(QMainWindow):
         self.stats_button = QPushButton("Statistics")
         self.stats_button.clicked.connect(self.show_statistics)
         status_layout.addWidget(self.stats_button)
+
+        # Analytics button
+        self.analytics_button = QPushButton("Analytics")
+        self.analytics_button.clicked.connect(self.show_analytics)
+        status_layout.addWidget(self.analytics_button)
 
         status_group.setLayout(status_layout)
         splitter.addWidget(status_group)
@@ -620,6 +623,115 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             layout.addWidget(QLabel(f"Error loading statistics: {str(e)}"))
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dialog.close)
+        layout.addWidget(buttons)
+
+        dialog.setLayout(layout)
+        dialog.exec()
+
+    def show_analytics(self):
+        """Show analytics dashboard with charts"""
+        import sqlite3
+        import json
+        from datetime import datetime
+        from collections import Counter
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Playlist Analytics")
+        dialog.setModal(True)
+        dialog.resize(1000, 700)
+
+        layout = QVBoxLayout()
+
+        tab_widget = QTabWidget()
+
+        try:
+            conn = sqlite3.connect('playlist_history.db')
+            c = conn.cursor()
+            c.execute('SELECT date, added_songs, missing_songs FROM history ORDER BY date')
+            rows = c.fetchall()
+            conn.close()
+
+            # Prepare data
+            dates = []
+            cumulative_added = 0
+            cumulative_list = []
+            artist_counter = Counter()
+            update_freq = []
+
+            for date, added_json, missing_json in rows:
+                dt = datetime.fromisoformat(date)
+                dates.append(dt.strftime('%Y-%m-%d'))
+                
+                added_songs = json.loads(added_json) if added_json else []
+                cumulative_added += len(added_songs)
+                cumulative_list.append(cumulative_added)
+                update_freq.append(len(added_songs))
+                
+                for song in added_songs:
+                    # Parse artist from "Title by Artist"
+                    if " by " in song:
+                        artist = song.split(" by ", 1)[1]
+                        artist_counter[artist] += 1
+
+            # Tab 1: Playlist Growth
+            growth_tab = QWidget()
+            growth_layout = QVBoxLayout()
+            fig1 = Figure(figsize=(8, 6))
+            ax1 = fig1.add_subplot(111)
+            ax1.plot(dates, cumulative_list, marker='o')
+            ax1.set_title('Playlist Growth Over Time')
+            ax1.set_xlabel('Date')
+            ax1.set_ylabel('Total Songs')
+            ax1.tick_params(axis='x', rotation=45)
+            canvas1 = FigureCanvas(fig1)
+            growth_layout.addWidget(canvas1)
+            growth_tab.setLayout(growth_layout)
+            tab_widget.addTab(growth_tab, "Growth")
+
+            # Tab 2: Top Artists
+            artists_tab = QWidget()
+            artists_layout = QVBoxLayout()
+            fig2 = Figure(figsize=(8, 6))
+            ax2 = fig2.add_subplot(111)
+            top_artists = artist_counter.most_common(10)
+            if top_artists:
+                artists, counts = zip(*top_artists)
+                ax2.bar(artists, counts)
+                ax2.set_title('Top 10 Artists')
+                ax2.set_xlabel('Artist')
+                ax2.set_ylabel('Songs Added')
+                ax2.tick_params(axis='x', rotation=45)
+            canvas2 = FigureCanvas(fig2)
+            artists_layout.addWidget(canvas2)
+            artists_tab.setLayout(artists_layout)
+            tab_widget.addTab(artists_tab, "Top Artists")
+
+            # Tab 3: Update Frequency
+            freq_tab = QWidget()
+            freq_layout = QVBoxLayout()
+            fig3 = Figure(figsize=(8, 6))
+            ax3 = fig3.add_subplot(111)
+            ax3.bar(dates, update_freq)
+            ax3.set_title('Songs Added per Update')
+            ax3.set_xlabel('Date')
+            ax3.set_ylabel('Songs Added')
+            ax3.tick_params(axis='x', rotation=45)
+            canvas3 = FigureCanvas(fig3)
+            freq_layout.addWidget(canvas3)
+            freq_tab.setLayout(freq_layout)
+            tab_widget.addTab(freq_tab, "Update Frequency")
+
+        except Exception as e:
+            error_tab = QWidget()
+            error_layout = QVBoxLayout()
+            error_layout.addWidget(QLabel(f"Error loading analytics: {str(e)}"))
+            error_tab.setLayout(error_layout)
+            tab_widget.addTab(error_tab, "Error")
+
+        layout.addWidget(tab_widget)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(dialog.close)

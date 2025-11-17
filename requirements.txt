@@ -5,3 +5,4 @@ mutagen
 selenium
 webdriver-manager
 PySide6
+matplotlib
