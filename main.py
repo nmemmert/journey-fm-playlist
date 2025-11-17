@@ -48,20 +48,15 @@ def scrape_recently_played():
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
-        options.add_argument("--remote-debugging-port=9222")
-        options.add_argument("--no-first-run")
-        options.add_argument("--disable-extensions")
+        options.add_argument("--remote-debugging-port=0")
         
         # Set binary location based on OS
         if platform.system() == 'Windows':
             options.binary_location = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
-            options.add_argument("--user-data-dir=C:\\temp\\chromium")
         elif platform.system() == 'Darwin':  # macOS
             options.binary_location = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-            options.add_argument("--user-data-dir=/tmp/chromium")
         else:  # Linux
             options.binary_location = "/usr/bin/chromium-browser"
-            options.add_argument("--user-data-dir=/tmp/chromium")
         
         service = Service()
         driver = webdriver.Chrome(service=service, options=options)
@@ -69,17 +64,22 @@ def scrape_recently_played():
         driver.get(url)
         
         # Wait for initial load
-        time.sleep(5)
+        time.sleep(10)
         
         # Click "View More" button if exists
         try:
             more_button = driver.find_element(By.ID, "moreSongs")
             more_button.click()
-            time.sleep(5)  # Wait for more songs to load
+            time.sleep(10)  # Wait for more songs to load
         except:
             pass  # Button not found or already loaded
         
-        html = driver.page_source
+        try:
+            html = driver.page_source
+        except Exception as e:
+            print(f"Failed to get page source for {source}: {e}")
+            html = ""
+        
         driver.quit()
         
         soup = BeautifulSoup(html, 'html.parser')
