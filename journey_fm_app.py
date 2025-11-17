@@ -289,6 +289,11 @@ class MainWindow(QMainWindow):
         self.last_update_label = QLabel("Last update: Never")
         status_layout.addWidget(self.last_update_label)
 
+        # Buy list button
+        self.buy_list_button = QPushButton("Show Buy List")
+        self.buy_list_button.clicked.connect(self.show_buy_list)
+        status_layout.addWidget(self.buy_list_button)
+
         status_group.setLayout(status_layout)
         splitter.addWidget(status_group)
 
@@ -431,6 +436,40 @@ class MainWindow(QMainWindow):
             self.config.save_config(config)
             self.load_settings()
             QMessageBox.information(self, "Settings Saved", "Configuration updated successfully!")
+
+    def show_buy_list(self):
+        """Show the Amazon buy list dialog"""
+        try:
+            with open('amazon_buy_list.txt', 'r') as f:
+                content = f.read()
+        except FileNotFoundError:
+            content = "No buy list available. Run an update to generate the list."
+
+        # Convert plain text to HTML with clickable links
+        html_content = content.replace('\n', '<br>')
+        # Make URLs clickable
+        import re
+        html_content = re.sub(r'(https?://[^\s]+)', r'<a href="\1">\1</a>', html_content)
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Amazon Buy List")
+        dialog.setModal(False)
+        dialog.resize(600, 400)
+
+        layout = QVBoxLayout()
+
+        text_edit = QTextEdit()
+        text_edit.setHtml(html_content)
+        text_edit.setReadOnly(True)
+        text_edit.setOpenExternalLinks(True)  # Allow clicking links
+        layout.addWidget(text_edit)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dialog.close)
+        layout.addWidget(buttons)
+
+        dialog.setLayout(layout)
+        dialog.show()
 
     def closeEvent(self, event):
         """Handle window close - minimize to tray instead of closing"""
