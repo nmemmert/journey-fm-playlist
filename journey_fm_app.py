@@ -439,6 +439,7 @@ class MainWindow(QMainWindow):
 
     def show_buy_list(self):
         """Show the Amazon buy list dialog"""
+        QMessageBox.information(self, "Debug", "Buy list button clicked!")
         try:
             with open('amazon_buy_list.txt', 'r') as f:
                 content = f.read()
