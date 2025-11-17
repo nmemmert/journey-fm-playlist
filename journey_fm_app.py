@@ -15,9 +15,9 @@ from datetime import datetime
 from pathlib import Path
 
 # GUI imports
-from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QPushButton, QTextEdit, QLineEdit, QLabel, QHBoxLayout, QDialog, QListWidget, QListWidgetItem, QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox, QInputDialog, QMessageBox, QProgressBar, QSystemTrayIcon, QMenu, QAction, QComboBox, QGroupBox, QFormLayout, QSpinBox, QTextBrowser, QTabWidget
+from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QPushButton, QTextEdit, QLineEdit, QLabel, QHBoxLayout, QDialog, QListWidget, QListWidgetItem, QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox, QInputDialog, QMessageBox, QProgressBar, QSystemTrayIcon, QMenu, QComboBox, QGroupBox, QFormLayout, QSpinBox, QTextBrowser, QTabWidget, QDialogButtonBox
 from PySide6.QtCore import QTimer, Qt, QThread, Signal, QSettings, QUrl
-from PySide6.QtGui import QIcon, QDesktopServices, QFont
+from PySide6.QtGui import QIcon, QDesktopServices, QFont, QAction
 import json
 import csv
 from urllib.parse import quote
