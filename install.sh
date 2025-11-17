@@ -32,10 +32,6 @@ if ! command -v chromium-browser > /dev/null 2>&1; then
     sudo apt update && sudo apt install -y chromium-browser
 fi
 
-# Create application icon
-echo "Creating application icon..."
-python3 "$DIR/create_icon.py"
-
 # Create desktop entry
 echo "Creating desktop entry..."
 mkdir -p ~/.local/share/applications

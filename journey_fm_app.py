@@ -246,7 +246,9 @@ class MainWindow(QMainWindow):
         self.config.load_config()
 
         self.setWindowTitle("Journey FM Playlist Creator")
-        self.setWindowIcon(QIcon("icon.png"))  # You'll need to add an icon
+        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'icon.png')
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
         self.resize(800, 600)
 
         # Create central widget
@@ -469,7 +471,8 @@ class MainWindow(QMainWindow):
     def show_buy_list(self):
         """Show the Amazon buy list dialog with interactive features"""
         try:
-            with open('amazon_buy_list.txt', 'r') as f:
+            buy_list_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'amazon_buy_list.txt')
+            with open(buy_list_path, 'r') as f:
                 content = f.read()
         except FileNotFoundError:
             QMessageBox.information(self, "No Buy List", "No buy list available. Run an update to generate the list.")
