@@ -454,74 +454,81 @@ class MainWindow(QMainWindow):
 
     def show_buy_list(self):
         """Show the Amazon buy list dialog with interactive features"""
+        QMessageBox.information(self, "Debug", "Show buy list called")
         try:
             with open('amazon_buy_list.txt', 'r') as f:
                 content = f.read()
         except FileNotFoundError:
             QMessageBox.information(self, "No Buy List", "No buy list available. Run an update to generate the list.")
             return
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to read buy list file: {e}")
+            return
 
-        # Parse content to get songs
-        lines = content.split('\n')
-        songs = []
-        i = 0
-        while i < len(lines):
-            if lines[i].startswith('Songs not in your library'):
-                i += 2  # Skip header
-                continue
-            if lines[i].strip() and not lines[i].startswith('http'):
-                artist_title = lines[i].strip()
-                if i + 1 < len(lines) and lines[i + 1].startswith('http'):
-                    url = lines[i + 1].strip()
-                    songs.append((artist_title, url))
-                    i += 3  # Skip blank line
+        try:
+            # Parse content to get songs
+            lines = content.split('\n')
+            songs = []
+            i = 0
+            while i < len(lines):
+                if lines[i].startswith('Songs not in your library'):
+                    i += 2  # Skip header
+                    continue
+                if lines[i].strip() and not lines[i].startswith('http'):
+                    artist_title = lines[i].strip()
+                    if i + 1 < len(lines) and lines[i + 1].startswith('http'):
+                        url = lines[i + 1].strip()
+                        songs.append((artist_title, url))
+                        i += 3  # Skip blank line
+                    else:
+                        i += 1
                 else:
                     i += 1
-            else:
-                i += 1
 
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Amazon Buy List")
-        dialog.setModal(True)
-        dialog.resize(600, 400)
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Amazon Buy List")
+            dialog.setModal(True)
+            dialog.resize(600, 400)
 
-        layout = QVBoxLayout()
+            layout = QVBoxLayout()
 
-        # Search box
-        search_layout = QHBoxLayout()
-        search_layout.addWidget(QLabel("Search:"))
-        self.search_input = QLineEdit()
-        self.search_input.textChanged.connect(lambda: self.filter_buy_list(songs))
-        search_layout.addWidget(self.search_input)
-        layout.addLayout(search_layout)
+            # Search box
+            search_layout = QHBoxLayout()
+            search_layout.addWidget(QLabel("Search:"))
+            self.search_input = QLineEdit()
+            self.search_input.textChanged.connect(lambda: self.filter_buy_list(songs))
+            search_layout.addWidget(self.search_input)
+            layout.addLayout(search_layout)
 
-        # List widget
-        self.buy_list_widget = QListWidget()
-        self.populate_buy_list(songs)
-        layout.addWidget(QLabel(f"Found {len(songs)} songs to buy:"))
-        layout.addWidget(self.buy_list_widget)
+            # List widget
+            self.buy_list_widget = QListWidget()
+            self.populate_buy_list(songs)
+            layout.addWidget(QLabel(f"Found {len(songs)} songs to buy:"))
+            layout.addWidget(self.buy_list_widget)
 
-        # Buttons
-        button_layout = QHBoxLayout()
-        open_button = QPushButton("Open Selected")
-        open_button.clicked.connect(self.open_selected_buy_items)
-        button_layout.addWidget(open_button)
+            # Buttons
+            button_layout = QHBoxLayout()
+            open_button = QPushButton("Open Selected")
+            open_button.clicked.connect(self.open_selected_buy_items)
+            button_layout.addWidget(open_button)
 
-        remove_button = QPushButton("Remove Selected")
-        remove_button.clicked.connect(lambda: self.remove_selected_buy_items(songs, dialog))
-        button_layout.addWidget(remove_button)
+            remove_button = QPushButton("Remove Selected")
+            remove_button.clicked.connect(lambda: self.remove_selected_buy_items(songs, dialog))
+            button_layout.addWidget(remove_button)
 
-        close_button = QPushButton("Close")
-        close_button.clicked.connect(dialog.close)
-        button_layout.addWidget(close_button)
+            close_button = QPushButton("Close")
+            close_button.clicked.connect(dialog.close)
+            button_layout.addWidget(close_button)
 
-        layout.addLayout(button_layout)
+            layout.addLayout(button_layout)
 
-        dialog.setLayout(layout)
-        dialog.show()
-        dialog.raise_()
-        dialog.activateWindow()
-        dialog.exec()
+            dialog.setLayout(layout)
+            dialog.show()
+            dialog.raise_()
+            dialog.activateWindow()
+            dialog.exec()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to show buy list dialog: {e}")
 
     def populate_buy_list(self, songs):
         """Populate the buy list widget"""
