@@ -642,8 +642,8 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout()
 
         table = QTableWidget()
-        table.setColumnCount(3)
-        table.setHorizontalHeaderLabels(["Date", "Type", "Song"])
+        table.setColumnCount(4)
+        table.setHorizontalHeaderLabels(["Date", "Type", "Artist", "Song"])
         table.horizontalHeader().setStretchLastSection(True)
 
         try:
@@ -666,7 +666,13 @@ class MainWindow(QMainWindow):
                 try:
                     added_songs = json.loads(added_songs_json)
                     for song in added_songs:
-                        entries.append((date_str, "Added", song))
+                        # Format is "Title by Artist"
+                        if " by " in song:
+                            title, artist = song.split(" by ", 1)
+                        else:
+                            title = song
+                            artist = "Unknown"
+                        entries.append((date_str, "Added", artist, title))
                 except:
                     pass
 
@@ -674,16 +680,18 @@ class MainWindow(QMainWindow):
                 try:
                     missing_songs = json.loads(missing_songs_json)
                     for song in missing_songs:
-                        song_text = f"{song['artist']} - {song['title']}"
-                        entries.append((date_str, "Missing", song_text))
+                        artist = song.get('artist', 'Unknown')
+                        title = song.get('title', 'Unknown')
+                        entries.append((date_str, "Missing", artist, title))
                 except:
                     pass
 
             table.setRowCount(len(entries))
-            for row_idx, (date_str, type_str, song) in enumerate(entries):
+            for row_idx, (date_str, type_str, artist, song) in enumerate(entries):
                 table.setItem(row_idx, 0, QTableWidgetItem(date_str))
                 table.setItem(row_idx, 1, QTableWidgetItem(type_str))
-                table.setItem(row_idx, 2, QTableWidgetItem(song))
+                table.setItem(row_idx, 2, QTableWidgetItem(artist))
+                table.setItem(row_idx, 3, QTableWidgetItem(song))
 
         except Exception as e:
             table.setRowCount(1)
