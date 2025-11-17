@@ -33,14 +33,14 @@ PLAYLIST_NAME = 'Journey FM Recently Played'
 def scrape_recently_played():
     """Scrape recently played songs from multiple stations using Selenium"""
     urls = [
-        'https://www.myjourneyfm.com/recently-played/',
-        'https://spiritfm.com/spiritfm-recently-played/'
+        ('https://www.myjourneyfm.com/recently-played/', 'Journey FM'),
+        ('https://spiritfm.com/spiritfm-recently-played/', 'Spirit FM')
     ]
     
     all_songs = []
     seen = set()  # To avoid duplicates
     
-    for url in urls:
+    for url, source in urls:
         options = Options()
         options.add_argument("--headless")
         options.add_argument("--no-sandbox")
@@ -81,7 +81,7 @@ def scrape_recently_played():
                 title = spans[0].get_text().strip()
                 artist = spans[1].get_text().strip()
                 # Ignore time
-                songs.append({'artist': artist, 'title': title})
+                songs.append({'artist': artist, 'title': title, 'source': source})
             else:
                 # Fallback to text parsing
                 full_text = element.get_text().strip()
@@ -103,7 +103,7 @@ def scrape_recently_played():
                             title = ' '.join(parts[:3])
                             artist = ' '.join(parts[3:])
                     if title and artist:
-                        songs.append({'artist': artist, 'title': title})
+                        songs.append({'artist': artist, 'title': title, 'source': source})
         
         # Add to all_songs, avoiding duplicates
         for song in songs:
@@ -112,9 +112,7 @@ def scrape_recently_played():
                 all_songs.append(song)
                 seen.add(key)
     
-    return all_songs
-
-def normalize_string(s):
+    return all_songsdef normalize_string(s):
     """Normalize string for comparison"""
     return re.sub(r'[^\\w\\s]', '', s).lower().strip()
 
@@ -186,7 +184,7 @@ def create_playlist_in_plex(plex, songs, playlist_name):
                     search_artist_lower in track_artist or track_artist in search_artist_lower):
                     # Only add if we haven't already added this track in this run
                     if track.ratingKey not in seen_keys:
-                        tracks.append(track)
+                        tracks.append((track, song))
                         seen_keys.add(track.ratingKey)
                     matched = True
                     break
@@ -203,32 +201,32 @@ def create_playlist_in_plex(plex, songs, playlist_name):
                 # Get existing track rating keys to avoid duplicates
                 existing_keys = {item.ratingKey for item in existing.items()}
                 # Filter out tracks already in playlist
-                new_tracks = [track for track in tracks if track.ratingKey not in existing_keys]
+                new_tracks = [track_song for track_song in tracks if track_song[0].ratingKey not in existing_keys]
                 
                 if new_tracks:
-                    existing.addItems(new_tracks)
+                    existing.addItems([ts[0] for ts in new_tracks])
                     print(f"Added {len(new_tracks)} new songs to existing playlist '{playlist_name}':")
-                    for track in new_tracks:
-                        print(f"  + '{track.title}' by {track.artist().title}")
+                    for track, song in new_tracks:
+                        print(f"  + '{track.title}' by {track.artist().title} ({song['source']})")
                         # Auto-tag added songs
                         track.addLabel("Journey FM")
                         track.rate(5)
                     added = len(new_tracks)
-                    added_songs.extend([f"{track.title} by {track.artist().title}" for track in new_tracks])
+                    added_songs.extend([f"{track.title} by {track.artist().title} ({song['source']})" for track, song in new_tracks])
                 else:
                     print(f"No new songs to add - all {len(tracks)} matching songs already in playlist.")
                     added = 0
             except:
                 # Playlist doesn't exist, create it
-                plex.createPlaylist(playlist_name, tracks)
+                plex.createPlaylist(playlist_name, [ts[0] for ts in tracks])
                 print(f"Created playlist '{playlist_name}' with {len(tracks)} songs:")
-                for track in tracks:
-                    print(f"  + '{track.title}' by {track.artist().title}")
+                for track, song in tracks:
+                    print(f"  + '{track.title}' by {track.artist().title} ({song['source']})")
                     # Auto-tag added songs
                     track.addLabel("Journey FM")
                     track.rate(5)
                 added = len(tracks)
-                added_songs.extend([f"{track.title} by {track.artist().title}" for track in tracks])
+                added_songs.extend([f"{track.title} by {track.artist().title} ({song['source']})" for track, song in tracks])
         except Exception as e:
             print(f"Error with playlist: {e}")
             added = 0
