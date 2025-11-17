@@ -954,10 +954,12 @@ class SystemTrayApp:
 
 def main():
     """Main application entry point"""
+    print("Starting Journey FM Playlist app...")
     try:
         if not os.environ.get('DISPLAY'):
             raise Exception("DISPLAY environment variable not set - no graphical display available")
         
+        print("Initializing GUI...")
         # Set up high DPI scaling
         QApplication.setHighDpiScaleFactorRoundingPolicy(
             Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
@@ -965,6 +967,7 @@ def main():
 
         # Create and run application
         tray_app = SystemTrayApp()
+        print("App initialized, starting event loop...")
         sys.exit(tray_app.run())
     except Exception as e:
         print(f"Failed to start GUI application: {e}")
