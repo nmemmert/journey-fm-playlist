@@ -504,8 +504,9 @@ class MainWindow(QMainWindow):
 
             # List widget
             self.buy_list_widget = QListWidget()
+            self.buy_list_label = QLabel(f"Found {len(songs)} songs to buy:")
+            layout.addWidget(self.buy_list_label)
             self.populate_buy_list(songs)
-            layout.addWidget(QLabel(f"Found {len(songs)} songs to buy:"))
             layout.addWidget(self.buy_list_widget)
 
             # Buttons
@@ -535,6 +536,7 @@ class MainWindow(QMainWindow):
     def populate_buy_list(self, songs):
         """Populate the buy list widget"""
         self.buy_list_widget.clear()
+        self.buy_list_label.setText(f"Found {len(songs)} songs to buy:")
         for artist_title, url in songs:
             item = QListWidgetItem(artist_title)
             item.setData(1, url)  # Store URL in item data
