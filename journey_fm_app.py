@@ -498,6 +498,7 @@ class MainWindow(QMainWindow):
         # List widget
         self.buy_list_widget = QListWidget()
         self.populate_buy_list(songs)
+        layout.addWidget(QLabel(f"Found {len(songs)} songs to buy:"))
         layout.addWidget(self.buy_list_widget)
 
         # Buttons
@@ -517,6 +518,9 @@ class MainWindow(QMainWindow):
         layout.addLayout(button_layout)
 
         dialog.setLayout(layout)
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
         dialog.exec()
 
     def populate_buy_list(self, songs):
