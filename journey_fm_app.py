@@ -642,22 +642,20 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout()
 
         table = QTableWidget()
-        table.setColumnCount(4)
-        table.setHorizontalHeaderLabels(["Date", "Added Songs", "Missing Songs", "Details"])
+        table.setColumnCount(3)
+        table.setHorizontalHeaderLabels(["Date", "Type", "Song"])
         table.horizontalHeader().setStretchLastSection(True)
-        table.setWordWrap(True)
-        table.resizeRowsToContents()
 
         try:
             conn = sqlite3.connect('playlist_history.db')
             c = conn.cursor()
-            c.execute('SELECT date, added_count, added_songs, missing_count, missing_songs FROM history ORDER BY date DESC')
+            c.execute('SELECT date, added_songs, missing_songs FROM history ORDER BY date DESC')
             rows = c.fetchall()
             conn.close()
 
-            table.setRowCount(len(rows))
-            for row_idx, (date, added_count, added_songs_json, missing_count, missing_songs_json) in enumerate(rows):
-                # Parse date
+            # Collect all entries
+            entries = []
+            for date, added_songs_json, missing_songs_json in rows:
                 try:
                     dt = datetime.fromisoformat(date)
                     date_str = dt.strftime('%Y-%m-%d %H:%M')
@@ -667,23 +665,25 @@ class MainWindow(QMainWindow):
                 # Added songs
                 try:
                     added_songs = json.loads(added_songs_json)
-                    added_text = f"{added_count} songs:\n" + "\n".join(added_songs)
+                    for song in added_songs:
+                        entries.append((date_str, "Added", song))
                 except:
-                    added_text = f"{added_count} songs"
+                    pass
 
                 # Missing songs
                 try:
                     missing_songs = json.loads(missing_songs_json)
-                    missing_text = f"{missing_count} songs:\n" + "\n".join([f"{s['artist']} - {s['title']}" for s in missing_songs])
+                    for song in missing_songs:
+                        song_text = f"{song['artist']} - {song['title']}"
+                        entries.append((date_str, "Missing", song_text))
                 except:
-                    missing_text = f"{missing_count} songs"
+                    pass
 
+            table.setRowCount(len(entries))
+            for row_idx, (date_str, type_str, song) in enumerate(entries):
                 table.setItem(row_idx, 0, QTableWidgetItem(date_str))
-                table.setItem(row_idx, 1, QTableWidgetItem(added_text))
-                table.setItem(row_idx, 2, QTableWidgetItem(missing_text))
-                table.setItem(row_idx, 3, QTableWidgetItem(f"Added: {added_count}, Missing: {missing_count}"))
-
-            table.resizeRowsToContents()
+                table.setItem(row_idx, 1, QTableWidgetItem(type_str))
+                table.setItem(row_idx, 2, QTableWidgetItem(song))
 
         except Exception as e:
             table.setRowCount(1)
