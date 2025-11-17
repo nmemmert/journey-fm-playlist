@@ -1,0 +1,6 @@
+2025-11-17 12:40:16.417598: Starting Journey FM Playlist app...
+2025-11-17 12:40:16.417787: DISPLAY set, initializing GUI
+2025-11-17 12:40:16.553130: Failed to start GUI application: 'MainWindow' object has no attribute 'update_playlist'
+2025-11-17 12:42:52.626588: Starting Journey FM Playlist app...
+2025-11-17 12:42:52.626688: DISPLAY set, initializing GUI
+2025-11-17 12:42:52.761510: App initialized, starting event loop

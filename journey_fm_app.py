@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 # GUI imports
-from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QPushButton, QTextEdit, QLineEdit, QLabel, QHBoxLayout, QDialog, QListWidget, QListWidgetItem, QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox, QInputDialog, QMessageBox, QProgressBar, QSystemTrayIcon, QMenu, QComboBox, QGroupBox, QFormLayout, QSpinBox, QTextBrowser, QTabWidget, QDialogButtonBox, QSplitter
+from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QPushButton, QTextEdit, QLineEdit, QLabel, QHBoxLayout, QDialog, QListWidget, QListWidgetItem, QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox, QInputDialog, QMessageBox, QProgressBar, QSystemTrayIcon, QMenu, QComboBox, QGroupBox, QFormLayout, QSpinBox, QTextBrowser, QTabWidget, QDialogButtonBox, QSplitter, QGridLayout
 from PySide6.QtCore import QTimer, Qt, QThread, Signal, QSettings, QUrl
 from PySide6.QtGui import QIcon, QDesktopServices, QFont, QAction
 import json
@@ -23,12 +23,9 @@ import csv
 from urllib.parse import quote
 import sqlite3
 from datetime import datetime
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
 
 # Import our existing functionality
-from main import scrape_recently_played, create_playlist_in_plex, PLEX_TOKEN, SERVER_IP, PLAYLIST_NAME
+from main import scrape_recently_played, create_playlist_in_plex, update_playlist, PLEX_TOKEN, SERVER_IP, PLAYLIST_NAME
 
 class Config:
     """Configuration management"""
@@ -287,30 +284,37 @@ class MainWindow(QMainWindow):
         self.last_update_label = QLabel("Last update: Never")
         status_layout.addWidget(self.last_update_label)
 
-        # Buy list button
+        # Buttons in grid layout
+        button_layout = QGridLayout()
+        
+        # Row 1
+        self.update_button = QPushButton("Update Playlist")
+        self.update_button.clicked.connect(self.run_update_playlist)
+        button_layout.addWidget(self.update_button, 0, 0)
+        
         self.buy_list_button = QPushButton("Show Buy List")
         self.buy_list_button.clicked.connect(self.show_buy_list)
-        status_layout.addWidget(self.buy_list_button)
-
-        # History button
+        button_layout.addWidget(self.buy_list_button, 0, 1)
+        
+        # Row 2
         self.history_button = QPushButton("View History")
         self.history_button.clicked.connect(self.show_history)
-        status_layout.addWidget(self.history_button)
-
-        # Export button
+        button_layout.addWidget(self.history_button, 1, 0)
+        
         self.export_button = QPushButton("Export Playlist")
         self.export_button.clicked.connect(self.export_playlist)
-        status_layout.addWidget(self.export_button)
-
-        # Statistics button
+        button_layout.addWidget(self.export_button, 1, 1)
+        
+        # Row 3
         self.stats_button = QPushButton("Statistics")
         self.stats_button.clicked.connect(self.show_statistics)
-        status_layout.addWidget(self.stats_button)
-
-        # Analytics button
+        button_layout.addWidget(self.stats_button, 2, 0)
+        
         self.analytics_button = QPushButton("Analytics")
         self.analytics_button.clicked.connect(self.show_analytics)
-        status_layout.addWidget(self.analytics_button)
+        button_layout.addWidget(self.analytics_button, 2, 1)
+        
+        status_layout.addLayout(button_layout)
 
         status_group.setLayout(status_layout)
         splitter.addWidget(status_group)
@@ -332,6 +336,13 @@ class MainWindow(QMainWindow):
         # Check if first run
         if not self.config.get('PLEX_TOKEN'):
             self.show_setup_wizard()
+
+    def run_update_playlist(self):
+        """Run playlist update in background thread"""
+        import threading
+        self.status_label.setText("Updating playlist...")
+        self.update_button.setEnabled(False)
+        threading.Thread(target=update_playlist, daemon=True).start()
 
     def set_tray_icon(self, tray_icon):
         """Set the tray icon reference"""
@@ -639,6 +650,9 @@ class MainWindow(QMainWindow):
         import json
         from datetime import datetime
         from collections import Counter
+        import matplotlib.pyplot as plt
+        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+        from matplotlib.figure import Figure
 
         dialog = QDialog(self)
         dialog.setWindowTitle("Playlist Analytics")
@@ -956,12 +970,16 @@ class SystemTrayApp:
 
 def main():
     """Main application entry point"""
+    with open('app_log.txt', 'a') as log:
+        log.write(f"{datetime.now()}: Starting Journey FM Playlist app...\n")
     print("Starting Journey FM Playlist app...")
     try:
         if not os.environ.get('DISPLAY'):
             raise Exception("DISPLAY environment variable not set - no graphical display available")
         
         print("Initializing GUI...")
+        with open('app_log.txt', 'a') as log:
+            log.write(f"{datetime.now()}: DISPLAY set, initializing GUI\n")
         # Set up high DPI scaling
         QApplication.setHighDpiScaleFactorRoundingPolicy(
             Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
@@ -970,11 +988,16 @@ def main():
         # Create and run application
         tray_app = SystemTrayApp()
         print("App initialized, starting event loop...")
+        with open('app_log.txt', 'a') as log:
+            log.write(f"{datetime.now()}: App initialized, starting event loop\n")
         sys.exit(tray_app.run())
     except Exception as e:
-        print(f"Failed to start GUI application: {e}")
+        error_msg = f"Failed to start GUI application: {e}"
+        print(error_msg)
         print("Make sure you have a graphical display available (X11/Wayland) and DISPLAY environment variable is set.")
         print("If running remotely, use X forwarding or a VNC session.")
+        with open('app_log.txt', 'a') as log:
+            log.write(f"{datetime.now()}: {error_msg}\n")
         sys.exit(1)
 
 if __name__ == "__main__":

@@ -86,16 +86,19 @@ def scrape_recently_played():
         
         songs = []
         # Find elements (div, li) that contain time in their text
-        song_elements = soup.find_all(lambda tag: tag.name in ['div', 'li', 'p'] and re.search(r'\d+:\d+ [AP]M', tag.get_text()))
+        song_elements = soup.find_all(lambda tag: tag.name in ['div', 'li', 'p'] and re.search(r'\d+:\d+', tag.get_text()))
         for element in song_elements:
-            if source == 'Journey FM':
-                # Journey FM uses <strong> for title
+            spans = element.find_all('span')
+            if len(spans) >= 2:
+                title = spans[0].get_text().strip()
+                artist = spans[1].get_text().strip()
+            else:
+                # Check for strong
                 strong = element.find('strong')
                 if strong:
                     title = strong.get_text().strip()
                     full_text = element.get_text().strip()
-                    # Remove the title and time
-                    match = re.search(r'(\d+:\d+ [AP]M)', full_text)
+                    match = re.search(r'(\d+:\d+(?: [AP]M)?)', full_text)
                     if match:
                         time_part = match.group(1)
                         before_time = full_text.split(time_part)[0].strip()
@@ -104,9 +107,9 @@ def scrape_recently_played():
                         artist = full_text.replace(title, '').strip()
                     artist = artist.strip()
                 else:
-                    # Fallback
+                    # Fallback to text parsing
                     full_text = element.get_text().strip()
-                    match = re.search(r'(\d+:\d+ [AP]M)', full_text)
+                    match = re.search(r'(\d+:\d+(?: [AP]M)?)', full_text)
                     if match:
                         play_time = match.group(1)
                         before = full_text.split(play_time)[0].strip()
@@ -126,29 +129,6 @@ def scrape_recently_played():
                             else:
                                 title = ' '.join(parts[:len(parts)//2])
                                 artist = ' '.join(parts[len(parts)//2:])
-            else:
-                # Spirit FM uses text with -
-                full_text = element.get_text().strip()
-                match = re.search(r'(\d+:\d+ [AP]M)', full_text)
-                if match:
-                    play_time = match.group(1)
-                    before = full_text.split(play_time)[0].strip()
-                    if ' by ' in before:
-                        title, artist = before.split(' by ', 1)
-                        title = title.strip()
-                        artist = artist.strip()
-                    elif ' - ' in before:
-                        title, artist = before.split(' - ', 1)
-                        title = title.strip()
-                        artist = artist.strip()
-                    else:
-                        parts = re.findall(r'[A-Z][^A-Z]*', before)
-                        if len(parts) >= 4:
-                            title = ' '.join(parts[:2])
-                            artist = ' '.join(parts[2:])
-                        else:
-                            title = ' '.join(parts[:len(parts)//2])
-                            artist = ' '.join(parts[len(parts)//2:])
             if title and artist:
                 songs.append({'artist': artist, 'title': title, 'source': source})        # Add to all_songs, avoiding duplicates
         for song in songs:
@@ -252,30 +232,24 @@ def create_playlist_in_plex(plex, songs, playlist_name):
                 
                 if new_tracks:
                     existing.addItems([ts[0] for ts in new_tracks])
-                    print(f"Added {len(new_tracks)} new songs to existing playlist '{playlist_name}':")
                     for track, song in new_tracks:
-                        print(f"  + '{track.title}' by {track.artist().title} ({song['source']})")
                         # Auto-tag added songs
                         track.addLabel("Journey FM")
                         track.rate(5)
                     added = len(new_tracks)
                     added_songs.extend([f"{track.title} by {track.artist().title} ({song['source']})" for track, song in new_tracks])
                 else:
-                    print(f"No new songs to add - all {len(tracks)} matching songs already in playlist.")
                     added = 0
             except:
                 # Playlist doesn't exist, create it
                 plex.createPlaylist(playlist_name, [ts[0] for ts in tracks])
-                print(f"Created playlist '{playlist_name}' with {len(tracks)} songs:")
                 for track, song in tracks:
-                    print(f"  + '{track.title}' by {track.artist().title} ({song['source']})")
                     # Auto-tag added songs
                     track.addLabel("Journey FM")
                     track.rate(5)
                 added = len(tracks)
                 added_songs.extend([f"{track.title} by {track.artist().title} ({song['source']})" for track, song in tracks])
         except Exception as e:
-            print(f"Error with playlist: {e}")
             added = 0
             added_songs = []
     else:
@@ -334,7 +308,7 @@ def setup_scheduler(params):
         subprocess.run(cmd, check=True)
         print("Scheduler setup completed.")
     except subprocess.CalledProcessError as e:
-        print(f"Error setting up scheduler: {e}")
+        print(f"Scheduler setup failed: {e}")
 
 def main():
     global PLEX_TOKEN, SERVER_IP, PLAYLIST_NAME
@@ -351,16 +325,12 @@ def main():
     
     # Log start time
     start_time = datetime.now()
-    print(f"\n{'='*60}")
-    print(f"Journey FM Playlist Update - {start_time.strftime('%Y-%m-%d %I:%M:%S %p')}")
-    print(f"{'='*60}\n")
     
     # Initialize history database
     init_history_db()
     
     # Scrape songs
     songs = scrape_recently_played()
-    print(f"Found {len(songs)} recently played songs.")
     
     # Connect to Plex via MyPlexAccount
     account = MyPlexAccount(token=PLEX_TOKEN)
@@ -377,20 +347,16 @@ def main():
             break
     
     if not server_resource:
-        print(f"Server at {SERVER_IP} not found in your claimed resources.")
         print("Please claim the server: Open http://172.16.16.106:32400/web, sign in with your Plex account, and follow the claim prompts.")
         return
     
     plex = server_resource.connect()
-    print(f"Connected to server: {plex.friendlyName}, ID: {plex.machineIdentifier}")
     
     # Debug: list library sections
-    print(f"Library sections: {[s.title for s in plex.library.sections()]}")
     
     # Debug: list existing playlists (handle unicode safely)
     playlists = plex.playlists()
     playlist_names = [p.title.encode('ascii', 'ignore').decode('ascii') if not p.title.isascii() else p.title for p in playlists]
-    print(f"Existing playlists: {len(playlists)} total")
     
     # Find matching songs in local library (optional, since Plex search might suffice)
     # But to filter only those in local library, perhaps skip or adjust
@@ -408,7 +374,6 @@ def main():
     
     # Create Amazon buy list for missing songs
     if missing:
-        print(f"\n{len(missing)} songs not found in your library. Updating Amazon buy list...")
         
         # Read existing buy list
         existing_songs = set()
@@ -428,7 +393,7 @@ def main():
                             existing_songs.add((artist.strip(), title.strip()))
                     i += 1
             except Exception as e:
-                print(f"Warning: Could not read existing buy list: {e}")
+                pass
         
         # Filter new missing songs
         new_missing = []
@@ -449,8 +414,6 @@ def main():
                     query = urllib.parse.quote(f"{artist} {title}")
                     url = f"https://www.amazon.com/s?k={query}&i=digital-music"
                     f.write(f"{artist} - {title}\n{url}\n\n")
-                    print(f"  - {artist} - {title}: {url}")
-            print(f"Added {len(new_missing)} new songs to buy list.")
         else:
             print("No new songs to add to buy list.")
         
@@ -459,8 +422,10 @@ def main():
     # Log completion
     end_time = datetime.now()
     duration = (end_time - start_time).total_seconds()
-    print(f"\nCompleted in {duration:.1f} seconds at {end_time.strftime('%I:%M:%S %p')}")
-    print(f"{'='*60}\n")
+
+def update_playlist():
+    """Function to update playlist, callable from GUI"""
+    main()
 
 if __name__ == '__main__':
     main()
