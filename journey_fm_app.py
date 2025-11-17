@@ -645,6 +645,8 @@ class MainWindow(QMainWindow):
         table.setColumnCount(4)
         table.setHorizontalHeaderLabels(["Date", "Added Songs", "Missing Songs", "Details"])
         table.horizontalHeader().setStretchLastSection(True)
+        table.setWordWrap(True)
+        table.resizeRowsToContents()
 
         try:
             conn = sqlite3.connect('playlist_history.db')
@@ -665,18 +667,14 @@ class MainWindow(QMainWindow):
                 # Added songs
                 try:
                     added_songs = json.loads(added_songs_json)
-                    added_text = f"{added_count} songs\n" + "\n".join(added_songs[:3])  # Show first 3
-                    if len(added_songs) > 3:
-                        added_text += f"\n... and {len(added_songs)-3} more"
+                    added_text = f"{added_count} songs:\n" + "\n".join(added_songs)
                 except:
                     added_text = f"{added_count} songs"
 
                 # Missing songs
                 try:
                     missing_songs = json.loads(missing_songs_json)
-                    missing_text = f"{missing_count} songs\n" + "\n".join([f"{s['artist']} - {s['title']}" for s in missing_songs[:3]])
-                    if len(missing_songs) > 3:
-                        missing_text += f"\n... and {len(missing_songs)-3} more"
+                    missing_text = f"{missing_count} songs:\n" + "\n".join([f"{s['artist']} - {s['title']}" for s in missing_songs])
                 except:
                     missing_text = f"{missing_count} songs"
 
@@ -684,6 +682,8 @@ class MainWindow(QMainWindow):
                 table.setItem(row_idx, 1, QTableWidgetItem(added_text))
                 table.setItem(row_idx, 2, QTableWidgetItem(missing_text))
                 table.setItem(row_idx, 3, QTableWidgetItem(f"Added: {added_count}, Missing: {missing_count}"))
+
+            table.resizeRowsToContents()
 
         except Exception as e:
             table.setRowCount(1)
