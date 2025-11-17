@@ -26,7 +26,7 @@ from PySide6.QtCore import (
     Qt, QTimer, QThread, Signal, QSettings, QSize
 )
 from PySide6.QtGui import (
-    QIcon, QAction, QFont, QPixmap, QPainter, QColor
+    QIcon, QAction, QFont, QPixmap, QPainter, QColor, QDesktopServices
 )
 
 # Import our existing functionality
@@ -92,7 +92,17 @@ class SetupWizard(QDialog):
 
         self.token_input = QLineEdit()
         self.token_input.setPlaceholderText("Get this from https://plex.tv/claim")
-        form_layout.addRow("Plex Token:", self.token_input)
+        
+        # Token input with help button
+        token_layout = QHBoxLayout()
+        token_layout.addWidget(self.token_input)
+        help_button = QPushButton("?")
+        help_button.setMaximumWidth(30)
+        help_button.setToolTip("Click to open Plex token page")
+        help_button.clicked.connect(lambda: QDesktopServices.openUrl("https://plex.tv/claim"))
+        token_layout.addWidget(help_button)
+        
+        form_layout.addRow("Plex Token:", token_layout)
 
         self.server_input = QLineEdit()
         self.server_input.setPlaceholderText("e.g., 192.168.1.100")

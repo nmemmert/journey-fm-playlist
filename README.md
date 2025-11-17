@@ -36,20 +36,20 @@ A cross-platform desktop application that automatically creates Plex playlists f
 
 ### Linux
 
-1. **Install Dependencies**
+1. **Run the Installer**
    ```bash
-   pip install -r requirements.txt
+   ./install.sh
    ```
+   This will:
+   - Install Python dependencies
+   - Set up virtual environment
+   - Install Chromium browser
+   - Create desktop icon
+   - Add to applications menu
 
-2. **Make Scripts Executable**
-   ```bash
-   chmod +x journey_fm_app.sh
-   ```
-
-3. **Run the Application**
-   ```bash
-   ./journey_fm_app.sh
-   ```
+2. **Launch from Menu**
+   - Search for "Journey FM Playlist" in your applications menu
+   - Or run: `./journey_fm_app.sh`
 
 ## ⚙️ Configuration
 
@@ -57,10 +57,19 @@ A cross-platform desktop application that automatically creates Plex playlists f
 
 When you first run the application, a setup wizard will guide you through:
 
-1. **Plex Token**: Get this from https://plex.tv/claim
-2. **Server IP**: Your Plex server's local IP address
-3. **Playlist Name**: Name for your Journey FM playlist
+1. **Plex Token**: See below for how to get your Plex token
+2. **Server IP**: Your Plex server's local IP address (e.g., 192.168.1.100)
+3. **Playlist Name**: Name for your Journey FM playlist (default: "Journey FM Recently Played")
 4. **Auto-Update Settings**: Enable automatic updates and set intervals
+
+#### How to Get Your Plex Token
+
+1. Go to [https://plex.tv/claim](https://plex.tv/claim) in your web browser
+2. Sign in with your Plex account
+3. Copy the claim token from the page (it looks like: `pU-mHWYUZU6iXJFhJyA`)
+4. Paste it into the application setup
+
+**Note**: This token is used to authenticate with your Plex server. Keep it secure and don't share it.
 
 ### Manual Configuration
 
