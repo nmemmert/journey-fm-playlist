@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QLabel, QPushButton, QTextEdit, QLineEdit, QFormLayout,
     QDialog, QDialogButtonBox, QSystemTrayIcon, QMenu,
     QGroupBox, QCheckBox, QSpinBox, QComboBox, QMessageBox,
-    QProgressBar, QSplitter, QFrame, QScrollArea, QTextBrowser, QTableWidget, QTableWidgetItem, QHeaderView
+    QProgressBar, QSplitter, QFrame, QScrollArea, QTextBrowser, QTableWidget, QTableWidgetItem, QHeaderView, QListWidget, QListWidgetItem
 )
 from PySide6.QtCore import (
     Qt, QTimer, QThread, Signal, QSettings, QSize
@@ -299,6 +299,16 @@ class MainWindow(QMainWindow):
         self.history_button.clicked.connect(self.show_history)
         status_layout.addWidget(self.history_button)
 
+        # Export button
+        self.export_button = QPushButton("Export Playlist")
+        self.export_button.clicked.connect(self.export_playlist)
+        status_layout.addWidget(self.export_button)
+
+        # Statistics button
+        self.stats_button = QPushButton("Statistics")
+        self.stats_button.clicked.connect(self.show_statistics)
+        status_layout.addWidget(self.stats_button)
+
         status_group.setLayout(status_layout)
         splitter.addWidget(status_group)
 
@@ -443,39 +453,170 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Settings Saved", "Configuration updated successfully!")
 
     def show_buy_list(self):
-        """Show the Amazon buy list dialog"""
+        """Show the Amazon buy list dialog with interactive features"""
         try:
             with open('amazon_buy_list.txt', 'r') as f:
                 content = f.read()
         except FileNotFoundError:
-            content = "No buy list available. Run an update to generate the list."
+            QMessageBox.information(self, "No Buy List", "No buy list available. Run an update to generate the list.")
+            return
 
-        # Convert plain text to HTML with clickable links
-        html_content = content.replace('\n', '<br>')
-        # Make URLs clickable
-        import re
-        html_content = re.sub(r'(https?://[^\s]+)', r'<a href="\1">\1</a>', html_content)
-        # Wrap in proper HTML
-        html_content = f"<html><body>{html_content}</body></html>"
+        # Parse content to get songs
+        lines = content.split('\n')
+        songs = []
+        i = 0
+        while i < len(lines):
+            if lines[i].startswith('Songs not in your library'):
+                i += 2  # Skip header
+                continue
+            if lines[i].strip() and not lines[i].startswith('http'):
+                artist_title = lines[i].strip()
+                if i + 1 < len(lines) and lines[i + 1].startswith('http'):
+                    url = lines[i + 1].strip()
+                    songs.append((artist_title, url))
+                    i += 3  # Skip blank line
+                else:
+                    i += 1
+            else:
+                i += 1
 
         dialog = QDialog(self)
         dialog.setWindowTitle("Amazon Buy List")
-        dialog.setModal(True)  # Make it modal so it shows
+        dialog.setModal(True)
         dialog.resize(600, 400)
 
         layout = QVBoxLayout()
 
-        text_browser = QTextBrowser()
-        text_browser.setHtml(html_content)
-        text_browser.setOpenExternalLinks(True)  # Allow clicking links
-        layout.addWidget(text_browser)
+        # Search box
+        search_layout = QHBoxLayout()
+        search_layout.addWidget(QLabel("Search:"))
+        self.search_input = QLineEdit()
+        self.search_input.textChanged.connect(lambda: self.filter_buy_list(songs))
+        search_layout.addWidget(self.search_input)
+        layout.addLayout(search_layout)
+
+        # List widget
+        self.buy_list_widget = QListWidget()
+        self.populate_buy_list(songs)
+        layout.addWidget(self.buy_list_widget)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+        open_button = QPushButton("Open Selected")
+        open_button.clicked.connect(self.open_selected_buy_items)
+        button_layout.addWidget(open_button)
+
+        remove_button = QPushButton("Remove Selected")
+        remove_button.clicked.connect(lambda: self.remove_selected_buy_items(songs, dialog))
+        button_layout.addWidget(remove_button)
+
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(dialog.close)
+        button_layout.addWidget(close_button)
+
+        layout.addLayout(button_layout)
+
+        dialog.setLayout(layout)
+        dialog.exec()
+
+    def populate_buy_list(self, songs):
+        """Populate the buy list widget"""
+        self.buy_list_widget.clear()
+        for artist_title, url in songs:
+            item = QListWidgetItem(artist_title)
+            item.setData(1, url)  # Store URL in item data
+            item.setCheckState(0)  # Qt.CheckState.Unchecked
+            self.buy_list_widget.addItem(item)
+
+    def filter_buy_list(self, all_songs):
+        """Filter the buy list based on search text"""
+        search_text = self.search_input.text().lower()
+        filtered = [(at, url) for at, url in all_songs if search_text in at.lower()]
+        self.populate_buy_list(filtered)
+
+    def open_selected_buy_items(self):
+        """Open selected buy list items in browser"""
+        for i in range(self.buy_list_widget.count()):
+            item = self.buy_list_widget.item(i)
+            if item.checkState() == 2:  # Qt.CheckState.Checked
+                url = item.data(1)
+                QDesktopServices.openUrl(url)
+
+    def remove_selected_buy_items(self, all_songs, dialog):
+        """Remove selected items from buy list"""
+        to_remove = []
+        for i in range(self.buy_list_widget.count()):
+            item = self.buy_list_widget.item(i)
+            if item.checkState() == 2:  # Qt.CheckState.Checked
+                artist_title = item.text()
+                to_remove.append(artist_title)
+
+        if not to_remove:
+            QMessageBox.information(dialog, "No Selection", "Please select items to remove.")
+            return
+
+        # Confirm
+        reply = QMessageBox.question(dialog, "Confirm Removal", 
+                                   f"Remove {len(to_remove)} selected items from buy list?",
+                                   QMessageBox.Yes | QMessageBox.No)
+        if reply != QMessageBox.Yes:
+            return
+
+        # Remove from all_songs
+        updated_songs = [(at, url) for at, url in all_songs if at not in to_remove]
+
+        # Rewrite file
+        with open('amazon_buy_list.txt', 'w') as f:
+            f.write("Songs not in your library - Amazon search links:\n\n")
+            for artist_title, url in updated_songs:
+                f.write(f"{artist_title}\n{url}\n\n")
+
+        # Update display
+        self.populate_buy_list(updated_songs)
+        QMessageBox.information(dialog, "Removed", f"Removed {len(to_remove)} items from buy list.")
+
+    def show_statistics(self):
+        """Show statistics dashboard"""
+        import sqlite3
+        import json
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Statistics Dashboard")
+        dialog.setModal(True)
+        dialog.resize(400, 300)
+
+        layout = QVBoxLayout()
+
+        try:
+            conn = sqlite3.connect('playlist_history.db')
+            c = conn.cursor()
+            c.execute('SELECT COUNT(*), SUM(added_count), SUM(missing_count) FROM history')
+            result = c.fetchone()
+            conn.close()
+
+            total_updates = result[0] or 0
+            total_added = result[1] or 0
+            total_missing = result[2] or 0
+
+            layout.addWidget(QLabel(f"Total Updates: {total_updates}"))
+            layout.addWidget(QLabel(f"Total Songs Added to Plex: {total_added}"))
+            layout.addWidget(QLabel(f"Total Songs in Buy List: {total_missing}"))
+
+            if total_updates > 0:
+                avg_added = total_added / total_updates
+                avg_missing = total_missing / total_updates
+                layout.addWidget(QLabel(f"Average Songs Added per Update: {avg_added:.1f}"))
+                layout.addWidget(QLabel(f"Average Missing Songs per Update: {avg_missing:.1f}"))
+
+        except Exception as e:
+            layout.addWidget(QLabel(f"Error loading statistics: {str(e)}"))
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(dialog.close)
         layout.addWidget(buttons)
 
         dialog.setLayout(layout)
-        dialog.exec()  # Use exec() for modal dialog
+        dialog.exec()
 
     def show_history(self):
         """Show the playlist history dialog"""
@@ -547,6 +688,62 @@ class MainWindow(QMainWindow):
 
         dialog.setLayout(layout)
         dialog.exec()
+
+    def export_playlist(self):
+        """Export the current Plex playlist to CSV"""
+        try:
+            # Get config
+            plex_token = self.config.get('PLEX_TOKEN')
+            server_ip = self.config.get('SERVER_IP')
+            playlist_name = self.config.get('PLAYLIST_NAME', 'Journey FM Recently Played')
+
+            if not plex_token or not server_ip:
+                QMessageBox.warning(self, "Configuration Error", "Plex token and server IP are required. Please check settings.")
+                return
+
+            # Connect to Plex
+            from plexapi.myplex import MyPlexAccount
+            account = MyPlexAccount(token=plex_token)
+            resources = account.resources()
+            server_resource = None
+            for r in resources:
+                for conn in r.connections:
+                    if server_ip in conn.address:
+                        server_resource = r
+                        break
+                if server_resource:
+                    break
+
+            if not server_resource:
+                QMessageBox.warning(self, "Connection Error", f"Server at {server_ip} not found.")
+                return
+
+            plex = server_resource.connect()
+
+            # Get playlist
+            try:
+                playlist = plex.playlist(playlist_name)
+                tracks = playlist.items()
+            except:
+                QMessageBox.warning(self, "Playlist Error", f"Playlist '{playlist_name}' not found.")
+                return
+
+            # Export to CSV
+            import csv
+            with open('playlist_export.csv', 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow(['Title', 'Artist', 'Album'])
+                for track in tracks:
+                    writer.writerow([
+                        track.title,
+                        track.artist().title if track.artist() else '',
+                        track.album().title if track.album() else ''
+                    ])
+
+            QMessageBox.information(self, "Export Complete", f"Playlist exported to playlist_export.csv ({len(tracks)} songs)")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", f"Failed to export playlist: {str(e)}")
 
     def closeEvent(self, event):
         """Handle window close - minimize to tray instead of closing"""
