@@ -199,6 +199,9 @@ def create_playlist_in_plex(plex, songs, playlist_name):
                     print(f"Added {len(new_tracks)} new songs to existing playlist '{playlist_name}':")
                     for track in new_tracks:
                         print(f"  + '{track.title}' by {track.artist().title}")
+                        # Auto-tag added songs
+                        track.addLabel("Journey FM")
+                        track.rate(5)
                     added = len(new_tracks)
                     added_songs.extend([f"{track.title} by {track.artist().title}" for track in new_tracks])
                 else:
@@ -210,6 +213,9 @@ def create_playlist_in_plex(plex, songs, playlist_name):
                 print(f"Created playlist '{playlist_name}' with {len(tracks)} songs:")
                 for track in tracks:
                     print(f"  + '{track.title}' by {track.artist().title}")
+                    # Auto-tag added songs
+                    track.addLabel("Journey FM")
+                    track.rate(5)
                 added = len(tracks)
                 added_songs.extend([f"{track.title} by {track.artist().title}" for track in tracks])
         except Exception as e:
