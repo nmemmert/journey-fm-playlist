@@ -8,7 +8,5 @@ if exist .venv\Scripts\activate.bat (
     call .venv\Scripts\activate.bat
 )
 
-REM Run the application
-python journey_fm_app.py
-
-pause
+REM Run the application without console window
+pythonw journey_fm_app.py

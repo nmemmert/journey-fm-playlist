@@ -359,6 +359,13 @@ class MainWindow(QMainWindow):
         self.last_update_label.setText(f"Last update: {datetime.now().strftime('%Y-%m-%d %I:%M:%S %p')}")
         self.status_label.setText("Ready")
 
+        # Append result to log file
+        try:
+            with open('playlist_log.txt', 'a', encoding='utf-8') as f:
+                f.write(result + '\n')
+        except Exception as e:
+            print(f"Error writing to log: {e}")
+
         # Refresh logs
         self.log_viewer.refresh_logs()
 
@@ -385,6 +392,13 @@ class MainWindow(QMainWindow):
     def auto_update_finished(self, result):
         """Handle automatic update completion"""
         self.last_update_label.setText(f"Last update: {datetime.now().strftime('%Y-%m-%d %I:%M:%S %p')}")
+
+        # Append result to log file
+        try:
+            with open('playlist_log.txt', 'a', encoding='utf-8') as f:
+                f.write(result + '\n')
+        except Exception as e:
+            print(f"Error writing to log: {e}")
 
         # Refresh logs
         self.log_viewer.refresh_logs()
