@@ -32,8 +32,11 @@ PLEX_TOKEN = 'pU-m3HWYUZU6iXJFhJyA'  # Your Plex.tv token
 SERVER_IP = '172.16.16.106'  # Your local server IP
 PLAYLIST_NAME = 'Journey FM Recently Played'
 
-def scrape_recently_played():
+def scrape_recently_played(selected_stations=None):
     """Scrape recently played songs from Journey FM and Spirit FM"""
+    if selected_stations is None:
+        selected_stations = ['journey_fm', 'spirit_fm']
+
     options = Options()
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
@@ -58,80 +61,82 @@ def scrape_recently_played():
     seen = set()
     
     # Journey FM - uses <strong> for title, normal text for artist
-    try:
-        print("Scraping Journey FM...")
-        driver.get('https://www.myjourneyfm.com/recently-played/')
-        time.sleep(5)
-        
-        # Click "View More" button if exists
+    if 'journey_fm' in selected_stations:
         try:
-            more_button = driver.find_element(By.ID, "moreSongs")
-            more_button.click()
+            print("Scraping Journey FM...")
+            driver.get('https://www.myjourneyfm.com/recently-played/')
             time.sleep(5)
-        except:
-            pass
-        
-        soup = BeautifulSoup(driver.page_source, 'html.parser')
-        
-        # Find all song items using the proper class structure
-        song_items = soup.find_all('div', class_='rp-item')
-        
-        for item in song_items:
+            
+            # Click "View More" button if exists
             try:
-                title_elem = item.find('h5', class_='song-title')
-                artist_elem = item.find('p', class_='song-artist')
-                
-                if title_elem and artist_elem:
-                    title = title_elem.get_text().strip()
-                    artist = artist_elem.get_text().strip()
+                more_button = driver.find_element(By.ID, "moreSongs")
+                more_button.click()
+                time.sleep(5)
+            except:
+                pass
+            
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
+            
+            # Find all song items using the proper class structure
+            song_items = soup.find_all('div', class_='rp-item')
+            
+            for item in song_items:
+                try:
+                    title_elem = item.find('h5', class_='song-title')
+                    artist_elem = item.find('p', class_='song-artist')
+                    
+                    if title_elem and artist_elem:
+                        title = title_elem.get_text().strip()
+                        artist = artist_elem.get_text().strip()
+                        
+                        if title and artist:
+                            key = (title.lower(), artist.lower())
+                            if key not in seen:
+                                all_songs.append({'title': title, 'artist': artist, 'source': 'Journey FM'})
+                                seen.add(key)
+                                print(f"  Found: {title} by {artist}")
+                except Exception as e:
+                    continue
+                    
+        except Exception as e:
+            print(f"Error scraping Journey FM: {e}")
+    
+    # Spirit FM - loads songs from iframe text file
+    if 'spirit_fm' in selected_stations:
+        try:
+            print("Scraping Spirit FM...")
+            driver.get('https://spiritfm.com/ajax/now_playing_history.txt')
+            time.sleep(3)
+            
+            # Parse the plain text format: "Mon 01:45PM Artist - Title"
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
+            text_content = soup.get_text()
+            
+            # Split into lines and parse each
+            for line in text_content.split('\n'):
+                line = line.strip()
+                if not line:
+                    continue
+                    
+                # Match pattern: Day HH:MM(AM/PM) Artist - Title
+                match = re.match(r'^\w+\s+\d+:\d+[AP]M\s+(.+?)\s+-\s+(.+)$', line)
+                if match:
+                    artist = match.group(1).strip()
+                    title = match.group(2).strip()
+                    
+                    # Clean up HTML entities
+                    artist = artist.replace('&amp;', '&')
+                    title = title.replace('&amp;', '&')
                     
                     if title and artist:
                         key = (title.lower(), artist.lower())
                         if key not in seen:
-                            all_songs.append({'title': title, 'artist': artist, 'source': 'Journey FM'})
+                            all_songs.append({'title': title, 'artist': artist, 'source': 'Spirit FM'})
                             seen.add(key)
                             print(f"  Found: {title} by {artist}")
-            except Exception as e:
-                continue
-                
-    except Exception as e:
-        print(f"Error scraping Journey FM: {e}")
-    
-    # Spirit FM - loads songs from iframe text file
-    try:
-        print("Scraping Spirit FM...")
-        driver.get('https://spiritfm.com/ajax/now_playing_history.txt')
-        time.sleep(3)
-        
-        # Parse the plain text format: "Mon 01:45PM Artist - Title"
-        soup = BeautifulSoup(driver.page_source, 'html.parser')
-        text_content = soup.get_text()
-        
-        # Split into lines and parse each
-        for line in text_content.split('\n'):
-            line = line.strip()
-            if not line:
-                continue
-                
-            # Match pattern: Day HH:MM(AM/PM) Artist - Title
-            match = re.match(r'^\w+\s+\d+:\d+[AP]M\s+(.+?)\s+-\s+(.+)$', line)
-            if match:
-                artist = match.group(1).strip()
-                title = match.group(2).strip()
-                
-                # Clean up HTML entities
-                artist = artist.replace('&amp;', '&')
-                title = title.replace('&amp;', '&')
-                
-                if title and artist:
-                    key = (title.lower(), artist.lower())
-                    if key not in seen:
-                        all_songs.append({'title': title, 'artist': artist, 'source': 'Spirit FM'})
-                        seen.add(key)
-                        print(f"  Found: {title} by {artist}")
-                
-    except Exception as e:
-        print(f"Error scraping Spirit FM: {e}")
+                    
+        except Exception as e:
+            print(f"Error scraping Spirit FM: {e}")
     
     driver.quit()
     
@@ -312,12 +317,18 @@ def setup_scheduler(params):
 def main():
     global PLEX_TOKEN, SERVER_IP, PLAYLIST_NAME
     # Load or prompt for config
+    selected_stations = ['journey_fm', 'spirit_fm']  # default
     if os.path.exists('config.json'):
         with open('config.json', 'r') as f:
             config = json.load(f)
         PLEX_TOKEN = config.get('PLEX_TOKEN', PLEX_TOKEN)
         SERVER_IP = config.get('SERVER_IP', SERVER_IP)
         PLAYLIST_NAME = config.get('PLAYLIST_NAME', PLAYLIST_NAME)
+        # Load selected stations
+        selected_stations_str = config.get('SELECTED_STATIONS', 'journey_fm,spirit_fm')
+        if isinstance(selected_stations_str, str) and selected_stations_str:
+            selected_stations = [s for s in selected_stations_str.split(',') if s]
+        # If empty or invalid, keep default
     else:
         # If no config file, use defaults (GUI should handle this)
         pass
@@ -328,8 +339,8 @@ def main():
     # Initialize history database
     init_history_db()
     
-    # Scrape songs
-    songs = scrape_recently_played()
+    # Scrape songs with selected stations
+    songs = scrape_recently_played(selected_stations)
     
     # Connect to Plex via MyPlexAccount
     account = MyPlexAccount(token=PLEX_TOKEN)
