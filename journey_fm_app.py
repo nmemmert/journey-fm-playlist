@@ -155,7 +155,7 @@ class SetupWizard(QDialog):
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        buttons.accepted.connect(self.accept)
+        buttons.accepted.connect(self.validate_and_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
@@ -191,6 +191,14 @@ class SetupWizard(QDialog):
             'UPDATE_UNIT': self.interval_unit.currentText(),
             'SELECTED_STATIONS': ','.join(selected_stations)
         }
+
+    def validate_and_accept(self):
+        """Validate configuration before accepting"""
+        if not self.journey_fm_checkbox.isChecked() and not self.spirit_fm_checkbox.isChecked():
+            QMessageBox.warning(self, "Validation Error",
+                              "Please select at least one station to monitor.")
+            return
+        self.accept()
 
 class LogViewer(QWidget):
     """Widget for viewing application logs"""

@@ -326,8 +326,9 @@ def main():
         PLAYLIST_NAME = config.get('PLAYLIST_NAME', PLAYLIST_NAME)
         # Load selected stations
         selected_stations_str = config.get('SELECTED_STATIONS', 'journey_fm,spirit_fm')
-        if isinstance(selected_stations_str, str):
-            selected_stations = selected_stations_str.split(',')
+        if isinstance(selected_stations_str, str) and selected_stations_str:
+            selected_stations = [s for s in selected_stations_str.split(',') if s]
+        # If empty or invalid, keep default
     else:
         # If no config file, use defaults (GUI should handle this)
         pass
