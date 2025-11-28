@@ -59,6 +59,9 @@ class Config:
     def save_config(self, config):
         """Save config to QSettings"""
         for key, value in config.items():
+            # Handle list values (convert to comma-separated string)
+            if isinstance(value, list):
+                value = ','.join(value)
             self.set(key, value)
 
 class SetupWizard(QDialog):
@@ -109,6 +112,22 @@ class SetupWizard(QDialog):
         form_group.setLayout(form_layout)
         layout.addWidget(form_group)
 
+        # Station Selection
+        station_group = QGroupBox("Station Selection")
+        station_layout = QVBoxLayout()
+
+        station_layout.addWidget(QLabel("Select which stations to monitor:"))
+        self.journey_fm_checkbox = QCheckBox("Journey FM (myjourneyfm.com)")
+        self.journey_fm_checkbox.setChecked(True)
+        station_layout.addWidget(self.journey_fm_checkbox)
+
+        self.spirit_fm_checkbox = QCheckBox("Spirit FM (spiritfm.com)")
+        self.spirit_fm_checkbox.setChecked(True)
+        station_layout.addWidget(self.spirit_fm_checkbox)
+
+        station_group.setLayout(station_layout)
+        layout.addWidget(station_group)
+
         # Scheduling options
         sched_group = QGroupBox("Scheduling")
         sched_layout = QVBoxLayout()
@@ -147,14 +166,30 @@ class SetupWizard(QDialog):
         self.server_input.setText(config.get('SERVER_IP', ''))
         self.playlist_input.setText(config.get('PLAYLIST_NAME', 'Journey FM Recently Played'))
 
+        # Load station selections
+        selected_stations = config.get('SELECTED_STATIONS', 'journey_fm,spirit_fm')
+        if isinstance(selected_stations, str):
+            selected_stations = selected_stations.split(',')
+        else:
+            selected_stations = ['journey_fm', 'spirit_fm']
+        self.journey_fm_checkbox.setChecked('journey_fm' in selected_stations)
+        self.spirit_fm_checkbox.setChecked('spirit_fm' in selected_stations)
+
     def get_config(self):
+        selected_stations = []
+        if self.journey_fm_checkbox.isChecked():
+            selected_stations.append('journey_fm')
+        if self.spirit_fm_checkbox.isChecked():
+            selected_stations.append('spirit_fm')
+
         return {
             'PLEX_TOKEN': self.token_input.text().strip(),
             'SERVER_IP': self.server_input.text().strip(),
             'PLAYLIST_NAME': self.playlist_input.text().strip(),
             'AUTO_UPDATE': self.auto_update.isChecked(),
             'UPDATE_INTERVAL': self.interval_spin.value(),
-            'UPDATE_UNIT': self.interval_unit.currentText()
+            'UPDATE_UNIT': self.interval_unit.currentText(),
+            'SELECTED_STATIONS': ','.join(selected_stations)
         }
 
 class LogViewer(QWidget):
