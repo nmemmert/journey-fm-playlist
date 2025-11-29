@@ -57,12 +57,27 @@ class Config:
         return {}
 
     def save_config(self, config):
-        """Save config to QSettings"""
+        """Save config to QSettings and config.json"""
+        # Save to QSettings
         for key, value in config.items():
             # Handle list values (convert to comma-separated string)
             if isinstance(value, list):
                 value = ','.join(value)
             self.set(key, value)
+        
+        # Also save to config.json for main.py to use
+        json_config = {}
+        for key, value in config.items():
+            if isinstance(value, list):
+                json_config[key] = ','.join(value)
+            else:
+                json_config[key] = value
+        
+        try:
+            with open(self.config_file, 'w') as f:
+                json.dump(json_config, f, indent=2)
+        except Exception as e:
+            print(f"Error saving config.json: {e}")
 
 class SetupWizard(QDialog):
     """Setup wizard for initial configuration"""

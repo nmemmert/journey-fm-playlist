@@ -1,0 +1,9 @@
+{
+  "PLEX_TOKEN": "pU-m3HWYUZU6iXJFhJyA",
+  "SERVER_IP": "172.16.16.106",
+  "PLAYLIST_NAME": "Journey FM Holiday",
+  "AUTO_UPDATE": true,
+  "UPDATE_INTERVAL": 15,
+  "UPDATE_UNIT": "Minutes",
+  "SELECTED_STATIONS": "journey_fm"
+}

@@ -30,7 +30,7 @@ import urllib.parse
 # Configuration (defaults, will be overridden by config.json)
 PLEX_TOKEN = 'pU-m3HWYUZU6iXJFhJyA'  # Your Plex.tv token
 SERVER_IP = '172.16.16.106'  # Your local server IP
-PLAYLIST_NAME = 'Journey FM Recently Played'
+PLAYLIST_NAME = 'Journey FM Holiday'
 
 def scrape_recently_played(selected_stations=None):
     """Scrape recently played songs from Journey FM and Spirit FM"""
