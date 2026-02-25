@@ -29,5 +29,11 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     icon = create_icon()
     pixmap = icon.pixmap(QSize(64, 64))
-    pixmap.save("icon.png")
-    print("Icon created: icon.png")
+    png_ok = pixmap.save("icon.png")
+    ico_ok = pixmap.save("icon.ico")
+    if png_ok:
+        print("Icon created: icon.png")
+    if ico_ok:
+        print("Icon created: icon.ico")
+    if not png_ok and not ico_ok:
+        print("Failed to create icon files")

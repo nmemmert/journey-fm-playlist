@@ -25,12 +25,57 @@ import json
 import subprocess
 import urllib.parse
 import sqlite3
-import urllib.parse
+import logging
+import shutil
 
-# Configuration (defaults, will be overridden by config.json)
-PLEX_TOKEN = 'pU-m3HWYUZU6iXJFhJyA'  # Your Plex.tv token
-SERVER_IP = '172.16.16.106'  # Your local server IP
-PLAYLIST_NAME = 'Journey FM Holiday'
+# Configuration (defaults, can be overridden by env vars or config.json)
+PLEX_TOKEN = os.getenv('PLEX_TOKEN', '').strip()
+SERVER_IP = os.getenv('SERVER_IP', '').strip()
+PLAYLIST_NAME = os.getenv('PLAYLIST_NAME', 'Journey FM Holiday').strip()
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+def detect_chrome_binary():
+    """Detect a Chrome/Chromium executable across common OS locations."""
+    env_binary = os.getenv('CHROME_BINARY', '').strip()
+    if env_binary and os.path.exists(env_binary):
+        return env_binary
+
+    candidates = []
+
+    if os.name == 'nt':
+        local_app_data = os.getenv('LOCALAPPDATA', '')
+        program_files = os.getenv('PROGRAMFILES', '')
+        program_files_x86 = os.getenv('PROGRAMFILES(X86)', '')
+        candidates.extend([
+            os.path.join(local_app_data, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+            os.path.join(program_files, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+            os.path.join(program_files_x86, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+            os.path.join(program_files, 'Chromium', 'Application', 'chrome.exe'),
+            os.path.join(program_files_x86, 'Chromium', 'Application', 'chrome.exe')
+        ])
+    elif os.name == 'posix':
+        candidates.extend([
+            '/usr/bin/google-chrome',
+            '/usr/bin/google-chrome-stable',
+            '/usr/bin/chromium',
+            '/usr/bin/chromium-browser',
+            '/opt/google/chrome/chrome',
+            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+            '/Applications/Chromium.app/Contents/MacOS/Chromium'
+        ])
+
+    for binary in candidates:
+        if binary and os.path.exists(binary):
+            return binary
+
+    for name in ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser', 'chrome']:
+        found = shutil.which(name)
+        if found:
+            return found
+
+    return None
 
 def scrape_recently_played(selected_stations=None):
     """Scrape recently played songs from Journey FM and Spirit FM"""
@@ -47,14 +92,19 @@ def scrape_recently_played(selected_stations=None):
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option('useAutomationExtension', False)
-    options.binary_location = "/usr/bin/google-chrome-stable"
+    chrome_binary = detect_chrome_binary()
+    if chrome_binary:
+        options.binary_location = chrome_binary
+    else:
+        logger.warning("No Chrome/Chromium binary detected; Selenium will use its default browser resolution")
     
     service = Service(ChromeDriverManager().install())
+    driver = None
     
     try:
         driver = webdriver.Chrome(service=service, options=options)
     except Exception as e:
-        print(f"Failed to start Chrome: {e}")
+        logger.error("Failed to start Chrome: %s", e)
         return []
     
     all_songs = []
@@ -63,16 +113,20 @@ def scrape_recently_played(selected_stations=None):
     # Journey FM - uses <strong> for title, normal text for artist
     if 'journey_fm' in selected_stations:
         try:
-            print("Scraping Journey FM...")
+            logger.info("Scraping Journey FM...")
             driver.get('https://www.myjourneyfm.com/recently-played/')
-            time.sleep(5)
+            WebDriverWait(driver, 15).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, 'div.rp-item'))
+            )
             
             # Click "View More" button if exists
             try:
-                more_button = driver.find_element(By.ID, "moreSongs")
+                more_button = WebDriverWait(driver, 5).until(
+                    EC.element_to_be_clickable((By.ID, "moreSongs"))
+                )
                 more_button.click()
-                time.sleep(5)
-            except:
+                time.sleep(2)
+            except Exception:
                 pass
             
             soup = BeautifulSoup(driver.page_source, 'html.parser')
@@ -94,19 +148,19 @@ def scrape_recently_played(selected_stations=None):
                             if key not in seen:
                                 all_songs.append({'title': title, 'artist': artist, 'source': 'Journey FM'})
                                 seen.add(key)
-                                print(f"  Found: {title} by {artist}")
-                except Exception as e:
+                                logger.info("  Found: %s by %s", title, artist)
+                except Exception:
                     continue
                     
         except Exception as e:
-            print(f"Error scraping Journey FM: {e}")
+            logger.error("Error scraping Journey FM: %s", e)
     
     # Spirit FM - loads songs from iframe text file
     if 'spirit_fm' in selected_stations:
         try:
-            print("Scraping Spirit FM...")
+            logger.info("Scraping Spirit FM...")
             driver.get('https://spiritfm.com/ajax/now_playing_history.txt')
-            time.sleep(3)
+            time.sleep(2)
             
             # Parse the plain text format: "Mon 01:45PM Artist - Title"
             soup = BeautifulSoup(driver.page_source, 'html.parser')
@@ -133,19 +187,20 @@ def scrape_recently_played(selected_stations=None):
                         if key not in seen:
                             all_songs.append({'title': title, 'artist': artist, 'source': 'Spirit FM'})
                             seen.add(key)
-                            print(f"  Found: {title} by {artist}")
+                            logger.info("  Found: %s by %s", title, artist)
                     
         except Exception as e:
-            print(f"Error scraping Spirit FM: {e}")
+            logger.error("Error scraping Spirit FM: %s", e)
     
-    driver.quit()
+    if driver:
+        driver.quit()
     
-    print(f"\nTotal unique songs found: {len(all_songs)}")
+    logger.info("Total unique songs found: %s", len(all_songs))
     return all_songs
 
 def normalize_string(s):
     """Normalize string for comparison"""
-    return re.sub(r'[^\\w\\s]', '', s).lower().strip()
+    return re.sub(r'[^\w\s]', '', s).lower().strip()
 
 def find_song_in_library(artist, title, library_path):
     """Check if song exists in local library"""
@@ -158,7 +213,7 @@ def find_song_in_library(artist, title, library_path):
                     file_title = normalize_string(audio.get('title', [''])[0])
                     if normalize_string(artist) == file_artist and normalize_string(title) == file_title:
                         return os.path.join(root, file)
-                except:
+                except Exception:
                     continue
     return None
 
@@ -204,7 +259,7 @@ def create_playlist_in_plex(plex, songs, playlist_name):
                 search_artist_lower = search_artist.lower()
                 
                 # Clean featured artists from search (e.g., "W/ Emerson Day", "feat. Someone")
-                search_artist_main = re.sub(r'\s+(w/|feat\.||featuring|ft\.).*', '', search_artist_lower).strip()
+                search_artist_main = re.sub(r'\s+(w/|feat\.|featuring|ft\.).*', '', search_artist_lower).strip()
                 
                 # Normalize & and + in track artist as well
                 track_artist = re.sub(r'\s*[&+]\s*', ' and ', track_artist)
@@ -244,7 +299,7 @@ def create_playlist_in_plex(plex, songs, playlist_name):
                     added_songs.extend([f"{track.title} by {track.artist().title} ({song['source']})" for track, song in new_tracks])
                 else:
                     added = 0
-            except:
+            except Exception:
                 # Playlist doesn't exist, create it
                 plex.createPlaylist(playlist_name, [ts[0] for ts in tracks])
                 for track, song in tracks:
@@ -253,11 +308,11 @@ def create_playlist_in_plex(plex, songs, playlist_name):
                     track.rate(5)
                 added = len(tracks)
                 added_songs.extend([f"{track.title} by {track.artist().title} ({song['source']})" for track, song in tracks])
-        except Exception as e:
+        except Exception:
             added = 0
             added_songs = []
     else:
-        print("No matching tracks found in Plex.")
+        logger.info("No matching tracks found in Plex.")
         added = 0
         added_songs = []
     
@@ -276,6 +331,37 @@ def prompt_for_config():
     }
     with open('config.json', 'w') as f:
         json.dump(config, f)
+    return config
+
+def load_config():
+    """Load runtime configuration from config.json and environment variables."""
+    config = {
+        'PLEX_TOKEN': PLEX_TOKEN,
+        'SERVER_IP': SERVER_IP,
+        'PLAYLIST_NAME': PLAYLIST_NAME,
+        'SELECTED_STATIONS': ['journey_fm', 'spirit_fm']
+    }
+
+    if not os.path.exists('config.json'):
+        return config
+
+    try:
+        with open('config.json', 'r') as f:
+            file_config = json.load(f)
+    except Exception as e:
+        logger.error("Unable to parse config.json: %s", e)
+        return config
+
+    config['PLEX_TOKEN'] = file_config.get('PLEX_TOKEN', config['PLEX_TOKEN'])
+    config['SERVER_IP'] = file_config.get('SERVER_IP', config['SERVER_IP'])
+    config['PLAYLIST_NAME'] = file_config.get('PLAYLIST_NAME', config['PLAYLIST_NAME'])
+
+    selected_stations = file_config.get('SELECTED_STATIONS')
+    if isinstance(selected_stations, str) and selected_stations.strip():
+        config['SELECTED_STATIONS'] = [s.strip() for s in selected_stations.split(',') if s.strip()]
+    elif isinstance(selected_stations, list) and selected_stations:
+        config['SELECTED_STATIONS'] = [str(s).strip() for s in selected_stations if str(s).strip()]
+
     return config
 
 def init_history_db():
@@ -310,28 +396,21 @@ def setup_scheduler(params):
         cmd.extend(['-' + k, str(v)])
     try:
         subprocess.run(cmd, check=True)
-        print("Scheduler setup completed.")
+        logger.info("Scheduler setup completed.")
     except subprocess.CalledProcessError as e:
-        print(f"Scheduler setup failed: {e}")
+        logger.error("Scheduler setup failed: %s", e)
 
 def main():
     global PLEX_TOKEN, SERVER_IP, PLAYLIST_NAME
-    # Load or prompt for config
-    selected_stations = ['journey_fm', 'spirit_fm']  # default
-    if os.path.exists('config.json'):
-        with open('config.json', 'r') as f:
-            config = json.load(f)
-        PLEX_TOKEN = config.get('PLEX_TOKEN', PLEX_TOKEN)
-        SERVER_IP = config.get('SERVER_IP', SERVER_IP)
-        PLAYLIST_NAME = config.get('PLAYLIST_NAME', PLAYLIST_NAME)
-        # Load selected stations
-        selected_stations_str = config.get('SELECTED_STATIONS', 'journey_fm,spirit_fm')
-        if isinstance(selected_stations_str, str) and selected_stations_str:
-            selected_stations = [s for s in selected_stations_str.split(',') if s]
-        # If empty or invalid, keep default
-    else:
-        # If no config file, use defaults (GUI should handle this)
-        pass
+    config = load_config()
+    PLEX_TOKEN = config['PLEX_TOKEN']
+    SERVER_IP = config['SERVER_IP']
+    PLAYLIST_NAME = config['PLAYLIST_NAME']
+    selected_stations = config['SELECTED_STATIONS']
+
+    if not PLEX_TOKEN or not SERVER_IP:
+        logger.error("Missing configuration: set PLEX_TOKEN and SERVER_IP in config.json or environment variables")
+        return
     
     # Log start time
     start_time = datetime.now()
@@ -343,8 +422,12 @@ def main():
     songs = scrape_recently_played(selected_stations)
     
     # Connect to Plex via MyPlexAccount
-    account = MyPlexAccount(token=PLEX_TOKEN)
-    resources = account.resources()
+    try:
+        account = MyPlexAccount(token=PLEX_TOKEN)
+        resources = account.resources()
+    except Exception as e:
+        logger.error("Failed to authenticate with Plex: %s", e)
+        return
     
     # Find the server by IP
     server_resource = None
@@ -357,16 +440,14 @@ def main():
             break
     
     if not server_resource:
-        print("Please claim the server: Open http://172.16.16.106:32400/web, sign in with your Plex account, and follow the claim prompts.")
+        logger.error("Server not found at %s. Verify SERVER_IP and that Plex is reachable.", SERVER_IP)
         return
     
-    plex = server_resource.connect()
-    
-    # Debug: list library sections
-    
-    # Debug: list existing playlists (handle unicode safely)
-    playlists = plex.playlists()
-    playlist_names = [p.title.encode('ascii', 'ignore').decode('ascii') if not p.title.isascii() else p.title for p in playlists]
+    try:
+        plex = server_resource.connect()
+    except Exception as e:
+        logger.error("Failed to connect to Plex server: %s", e)
+        return
     
     # Find matching songs in local library (optional, since Plex search might suffice)
     # But to filter only those in local library, perhaps skip or adjust
@@ -376,7 +457,7 @@ def main():
     if songs:
         added, added_songs, missing = create_playlist_in_plex(plex, songs, PLAYLIST_NAME)
     else:
-        print("No songs found.")
+        logger.info("No songs found.")
         added, added_songs, missing = 0, [], []
     
     # Save to history
@@ -403,7 +484,7 @@ def main():
                             existing_songs.add((artist.strip(), title.strip()))
                     i += 1
             except Exception as e:
-                pass
+                logger.warning("Failed reading amazon_buy_list.txt: %s", e)
         
         # Filter new missing songs
         new_missing = []
@@ -425,9 +506,9 @@ def main():
                     url = f"https://www.amazon.com/s?k={query}&i=digital-music"
                     f.write(f"{artist} - {title}\n{url}\n\n")
         else:
-            print("No new songs to add to buy list.")
+            logger.info("No new songs to add to buy list.")
         
-        print("Buy list updated.")
+        logger.info("Buy list updated.")
     
     # Log completion
     end_time = datetime.now()

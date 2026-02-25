@@ -1,214 +1,167 @@
 # Journey FM Playlist Creator
 
-A cross-platform desktop application that automatically creates Plex playlists from recently played songs on My Journey FM radio station.
+Desktop app + script that pulls recently played songs from Journey FM / Spirit FM and updates a Plex playlist.
 
-![Application Screenshot](screenshot.png)
+## What It Does
 
-## ✨ Features
+- Scrapes recently played songs from:
+  - `https://www.myjourneyfm.com/recently-played/`
+  - `https://spiritfm.com/ajax/now_playing_history.txt`
+- Matches tracks in your Plex Music library with title/artist normalization.
+- Creates or updates your configured Plex playlist.
+- Avoids adding duplicates already in the target playlist.
+- Tracks run history in `playlist_history.db`.
+- Writes missing songs to `amazon_buy_list.txt` with Amazon search links.
+- Provides a GUI with system tray support, settings, log viewer, history, stats, analytics, and CSV export.
 
-- **System Tray Integration**: Runs minimized in the taskbar/system tray
-- **Automatic Updates**: Configurable automatic playlist updates
-- **Cross-Platform**: Works on Windows and Linux
-- **Log Viewer**: Built-in log viewer for monitoring updates
-- **Easy Setup**: Guided setup wizard for initial configuration
-- **Duplicate Prevention**: Smart duplicate detection and prevention
-- **Artist Matching**: Handles featured artists, punctuation, and name variations
+## Requirements
 
-## 🚀 Quick Start
+- Python 3.10+
+- Plex account token + reachable Plex server
+- A Chrome/Chromium browser for Selenium scraping
+
+Dependencies are listed in `requirements.txt` (GUI uses `PySide6`).
+
+## Install
 
 ### Windows
 
-1. **Install Dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+Simple install from GitHub (recommended):
 
-2. **Create Application Icon**
-   ```bash
-   python create_icon.py
-   ```
+1. Open **PowerShell**.
+2. Run:
 
-3. **Run the Application**
-   ```bash
-   python journey_fm_app.py
-   ```
-   Or use the batch file: `run_app.bat`
+```powershell
+git clone https://github.com/nmemmert/journey-fm-playlist.git
+cd journey-fm-playlist
+.\install_windows.bat
+```
+
+3. Launch from:
+   - Start Menu: **Journey FM Playlist Creator**
+   - Desktop shortcut: **Journey FM Playlist Creator**
+
+No Git? Download ZIP from GitHub (**Code -> Download ZIP**), extract, open PowerShell in that folder, and run:
+
+```powershell
+.\install_windows.bat
+```
+
+If script execution is blocked:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install_windows.ps1
+```
+
+Optional installer switches:
+
+- `-NoDesktopShortcut` skips Desktop shortcut creation
+- `-NoStartMenuShortcut` skips Start Menu shortcut creation
+
+Manual install (advanced):
+
+```powershell
+py -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+python journey_fm_app.py
+```
+
+Installer files:
+
+- `install_windows.bat` - one-click installer launcher
+- `install_windows.ps1` - installer logic
 
 ### Linux
 
-1. **Run the Installer**
-   ```bash
-   ./install.sh
-   ```
-   This will:
-   - Install Python dependencies
-   - Set up virtual environment
-   - Install Chromium browser
-   - Create desktop icon
-   - Add to applications menu
+Quick setup:
 
-2. **Launch from Menu**
-   - Search for "Journey FM Playlist" in your applications menu
-   - Or run: `./journey_fm_app.sh`
+```bash
+./install.sh
+```
 
-## ⚙️ Configuration
+Manual setup:
 
-### First-Time Setup
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python journey_fm_app.py
+```
 
-When you first run the application, a setup wizard will guide you through:
+## Configuration
 
-1. **Plex Token**: See below for how to get your Plex token
-2. **Server IP**: Your Plex server's local IP address (e.g., 192.168.1.100)
-3. **Playlist Name**: Name for your Journey FM playlist (default: "Journey FM Recently Played")
-4. **Auto-Update Settings**: Enable automatic updates and set intervals
+Use the GUI setup wizard (first launch) or edit `config.json` directly.
 
-#### How to Get Your Plex Token
+Example `config.json`:
 
-1. Go to [https://plex.tv/claim](https://plex.tv/claim) in your web browser
-2. Sign in with your Plex account
-3. Copy the claim token from the page (it looks like: `pU-mHWYUZU6iXJFhJyA`)
-4. Paste it into the application setup
+```json
+{
+  "PLEX_TOKEN": "your-plex-token",
+  "SERVER_IP": "192.168.1.100",
+  "PLAYLIST_NAME": "Journey FM Recently Played",
+  "AUTO_UPDATE": true,
+  "UPDATE_INTERVAL": 15,
+  "UPDATE_UNIT": "Minutes",
+  "SELECTED_STATIONS": "journey_fm,spirit_fm"
+}
+```
 
-**Note**: This token is used to authenticate with your Plex server. Keep it secure and don't share it.
+You can also provide runtime env vars:
 
-### Manual Configuration
+- `PLEX_TOKEN`
+- `SERVER_IP`
+- `PLAYLIST_NAME`
 
-You can also edit settings anytime through the Settings menu in the application.
+Optional browser override:
 
-## 📱 System Tray Features
+- `CHROME_BINARY` (absolute path to Chrome/Chromium executable)
 
-- **Minimize to Tray**: The app minimizes to system tray instead of closing
-- **Right-click Menu**:
-  - Show: Restore the main window
-  - Update Now: Manually trigger playlist update
-  - Quit: Exit the application
-- **Double-click**: Restore the main window
-- **Notifications**: Get notified when automatic updates complete
+If `CHROME_BINARY` is not set, the app auto-detects browser locations for Windows/Linux/macOS and then falls back to `PATH`.
 
-## 📋 Log Viewer
+## Running Without GUI
 
-The built-in log viewer shows:
-- Update timestamps
-- Songs added to playlist
-- Error messages
-- Update duration
-- Connection status
+Run one update cycle from CLI:
 
-Logs are automatically saved to `playlist_log.txt` for external viewing.
-
-## 🔄 Automatic Updates
-
-Configure automatic updates to run every:
-- 5-120 minutes
-- Hours (up to several hours)
-
-The app will:
-- Run in the background
-- Show tray notifications when updates complete
-- Prevent duplicate songs
-- Handle connection errors gracefully
-
-## 🛠️ Troubleshooting
-
-### Common Issues
-
-**"Server not found"**
-- Ensure your Plex server is running
-- Check that you've claimed the server at http://[SERVER_IP]:32400/web
-- Verify the server IP address in settings
-
-**"No matching tracks found"**
-- Ensure your music library is properly scanned in Plex
-- Check that song metadata matches (artist names, titles)
-- The app handles variations like "&" vs "and", featured artists, etc.
-
-**System tray not working**
-- On Linux, ensure you have a system tray (like KDE/GNOME)
-- Some desktop environments may need additional packages
-
-### Manual Testing
-
-Test the core functionality:
 ```bash
 python main.py
 ```
 
-This runs the update once without the GUI.
+## GUI Notes
 
-## 📁 Project Structure
+- Minimize-to-tray on close when tray is available.
+- Tray menu supports Show / Update Now / Quit.
+- Auto-update runs on configurable interval.
+- Works on X11 and Wayland Linux sessions.
 
-```
-journey-fm-playlist/
-├── journey_fm_app.py      # Main GUI application
-├── main.py                # Core update logic
-├── create_icon.py         # Icon generator
-├── run_app.bat           # Windows launcher
-├── journey_fm_app.sh     # Linux launcher
-├── requirements.txt       # Python dependencies
-├── config.json           # Configuration (auto-generated)
-├── playlist_log.txt      # Update logs
-├── icon.png              # Application icon
-└── README.md             # This file
-```
+## Output Files
 
-## 🔧 Development
+- `config.json` - runtime settings shared by GUI and CLI
+- `playlist_history.db` - update history and statistics data
+- `playlist_log.txt` - GUI update logs
+- `amazon_buy_list.txt` - missing songs with Amazon links
+- `playlist_export.csv` - exported playlist from GUI action
 
-### Adding Features
+## Troubleshooting
 
-The application is built with PyQt6 for cross-platform compatibility. Key components:
+- **Server not found**: verify `SERVER_IP`, Plex availability, and that you are signed in with the correct account token.
+- **No songs added**: confirm scraped songs exist in your Plex library and metadata is correct.
+- **Browser startup errors**: install Chrome/Chromium or set `CHROME_BINARY` explicitly.
+- **No tray icon**: some desktop environments disable or hide legacy trays.
+- **GUI fails at startup (`libGL.so.1` / PySide6 import errors)**: install missing system graphics libs (Linux example: `sudo apt install libgl1`) and reinstall Python deps with `pip install -r requirements.txt`.
 
-- `MainWindow`: Main application window
-- `SystemTrayApp`: Tray icon and menu
-- `SetupWizard`: Configuration wizard
-- `LogViewer`: Log display widget
-- `UpdateWorker`: Background update thread
+## Core Files
 
-### Building Standalone Executables
+- `journey_fm_app.py` - desktop GUI and tray app
+- `main.py` - scraping + Plex update pipeline
+- `requirements.txt` - Python dependencies
+- `install.sh` - Linux setup helper
 
-**Windows (PyInstaller)**
-```bash
-pip install pyinstaller
-pyinstaller --onefile --windowed --icon=icon.ico journey_fm_app.py
-```
+## Pre-Release Checklist
 
-**Linux (PyInstaller)**
-```bash
-pip install pyinstaller
-pyinstaller --onefile --icon=icon.png journey_fm_app.py
-```
-
-## 📋 Requirements
-
-- **Python**: 3.8+
-- **PyQt6**: GUI framework
-- **Selenium**: Web scraping
-- **PlexAPI**: Plex integration
-- **BeautifulSoup4**: HTML parsing
-
-### System Requirements
-
-- **Windows**: 10+ with system tray support
-- **Linux**: Modern desktop environment with system tray
-- **Plex Server**: Local or remote Plex server access
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test on both Windows and Linux
-5. Submit a pull request
-
-## 📄 License
-
-This project is open source. Feel free to use and modify as needed.
-
-## 🆘 Support
-
-If you encounter issues:
-1. Check the application logs
-2. Verify your Plex server connection
-3. Ensure all dependencies are installed
-4. Test with `python main.py` first
-
-For bugs or feature requests, please create an issue on GitHub.
+- Verify `config.json` has valid `PLEX_TOKEN`, `SERVER_IP`, and `PLAYLIST_NAME`.
+- Run one CLI update: `python main.py` and confirm songs/history are written.
+- Run GUI update: `python journey_fm_app.py` and verify status/log output updates.
+- Confirm tray behavior (minimize to tray, Show/Update/Quit actions).
+- On Windows/Linux, confirm Chrome/Chromium detection or set `CHROME_BINARY`.
+- Export playlist once and verify `playlist_export.csv` is created.

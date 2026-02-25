@@ -9,23 +9,24 @@ Features system tray integration, log viewing, and easy setup.
 import sys
 import os
 import json
-import threading
-import time
+import logging
 from datetime import datetime
 from pathlib import Path
 
 # GUI imports
-from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QPushButton, QTextEdit, QLineEdit, QLabel, QHBoxLayout, QDialog, QListWidget, QListWidgetItem, QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox, QInputDialog, QMessageBox, QProgressBar, QSystemTrayIcon, QMenu, QComboBox, QGroupBox, QFormLayout, QSpinBox, QTextBrowser, QTabWidget, QDialogButtonBox, QSplitter, QGridLayout
-from PySide6.QtCore import QTimer, Qt, QThread, Signal, QSettings, QUrl
-from PySide6.QtGui import QIcon, QDesktopServices, QFont, QAction
-import json
-import csv
-from urllib.parse import quote
-import sqlite3
-from datetime import datetime
+try:
+    from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QPushButton, QTextEdit, QLineEdit, QLabel, QHBoxLayout, QDialog, QListWidget, QListWidgetItem, QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox, QInputDialog, QMessageBox, QProgressBar, QSystemTrayIcon, QMenu, QComboBox, QGroupBox, QFormLayout, QSpinBox, QTextBrowser, QTabWidget, QDialogButtonBox, QSplitter, QGridLayout
+    from PySide6.QtCore import QTimer, Qt, QThread, Signal, QSettings, QUrl
+    from PySide6.QtGui import QIcon, QDesktopServices, QFont, QAction
+except Exception as gui_import_error:
+    print("Failed to start GUI: required Qt/PySide6 dependencies are missing or not loadable.")
+    print(f"Details: {gui_import_error}")
+    print("On Linux, install graphics/runtime libs (for example: libgl1) and ensure PySide6 is installed.")
+    print("Then run: pip install -r requirements.txt")
+    sys.exit(1)
 
-# Import our existing functionality
-from main import scrape_recently_played, create_playlist_in_plex, update_playlist, PLEX_TOKEN, SERVER_IP, PLAYLIST_NAME
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 class Config:
     """Configuration management"""
@@ -49,11 +50,9 @@ class Config:
                 # Migrate to QSettings
                 for key, value in config.items():
                     self.set(key, value)
-                # Remove old file
-                self.config_file.unlink()
                 return config
-            except:
-                pass
+            except Exception as e:
+                logger.warning("Failed loading config file %s: %s", self.config_file, e)
         return {}
 
     def save_config(self, config):
@@ -77,7 +76,17 @@ class Config:
             with open(self.config_file, 'w') as f:
                 json.dump(json_config, f, indent=2)
         except Exception as e:
-            print(f"Error saving config.json: {e}")
+            logger.error("Error saving config.json: %s", e)
+
+def parse_bool(value):
+    """Safely parse truthy values from QSettings/JSON."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+    if isinstance(value, (int, float)):
+        return value != 0
+    return False
 
 class SetupWizard(QDialog):
     """Setup wizard for initial configuration"""
@@ -112,7 +121,7 @@ class SetupWizard(QDialog):
         help_button = QPushButton("?")
         help_button.setMaximumWidth(30)
         help_button.setToolTip("Click to open Plex token page")
-        help_button.clicked.connect(lambda: QDesktopServices.openUrl("https://plex.tv/claim"))
+        help_button.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://plex.tv/claim")))
         token_layout.addWidget(help_button)
         
         form_layout.addRow("Plex Token:", token_layout)
@@ -185,6 +194,8 @@ class SetupWizard(QDialog):
         selected_stations = config.get('SELECTED_STATIONS', 'journey_fm,spirit_fm')
         if isinstance(selected_stations, str):
             selected_stations = selected_stations.split(',')
+        elif isinstance(selected_stations, list):
+            selected_stations = [str(station).strip() for station in selected_stations]
         else:
             selected_stations = ['journey_fm', 'spirit_fm']
         self.journey_fm_checkbox.setChecked('journey_fm' in selected_stations)
@@ -283,13 +294,15 @@ class UpdateWorker(QThread):
 
             # Capture output by redirecting stdout
             import io
-            from contextlib import redirect_stdout
+            from contextlib import redirect_stdout, redirect_stderr
 
             output_buffer = io.StringIO()
-            with redirect_stdout(output_buffer):
+            with redirect_stdout(output_buffer), redirect_stderr(output_buffer):
                 update_main()
 
             result = output_buffer.getvalue()
+            if not result.strip():
+                result = "Update completed."
             self.finished.emit(result)
 
         except Exception as e:
@@ -308,6 +321,7 @@ class MainWindow(QMainWindow):
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
         self.resize(800, 600)
+        self.setMinimumSize(760, 520)
 
         # Create central widget
         central = QWidget()
@@ -399,10 +413,7 @@ class MainWindow(QMainWindow):
 
     def run_update_playlist(self):
         """Run playlist update in background thread"""
-        import threading
-        self.status_label.setText("Updating playlist...")
-        self.update_button.setEnabled(False)
-        threading.Thread(target=update_playlist, daemon=True).start()
+        self.manual_update()
 
     def set_tray_icon(self, tray_icon):
         """Set the tray icon reference"""
@@ -420,7 +431,7 @@ class MainWindow(QMainWindow):
 
     def load_settings(self):
         """Load settings and configure auto-update"""
-        auto_update = self.config.get('AUTO_UPDATE', False)
+        auto_update = parse_bool(self.config.get('AUTO_UPDATE', False))
         if auto_update:
             interval = int(self.config.get('UPDATE_INTERVAL', 15))
             unit = self.config.get('UPDATE_UNIT', 'Minutes')
@@ -444,6 +455,7 @@ class MainWindow(QMainWindow):
                                   "An update is already running. Please wait.")
             return
 
+        self.update_button.setEnabled(False)
         self.worker = UpdateWorker()
         self.worker.progress.connect(self.update_progress)
         self.worker.finished.connect(self.update_finished)
@@ -460,6 +472,7 @@ class MainWindow(QMainWindow):
     def update_finished(self, result):
         """Handle update completion"""
         self.progress_bar.setVisible(False)
+        self.update_button.setEnabled(True)
         self.last_update_label.setText(f"Last update: {datetime.now().strftime('%Y-%m-%d %I:%M:%S %p')}")
         self.status_label.setText("Ready")
 
@@ -468,7 +481,7 @@ class MainWindow(QMainWindow):
             with open('playlist_log.txt', 'a', encoding='utf-8') as f:
                 f.write(result + '\n')
         except Exception as e:
-            print(f"Error writing to log: {e}")
+            logger.error("Error writing to log: %s", e)
 
         # Refresh logs
         self.log_viewer.refresh_logs()
@@ -479,10 +492,14 @@ class MainWindow(QMainWindow):
         else:
             # Extract summary from result
             lines = result.strip().split('\n')
+            summary_found = False
             for line in reversed(lines):
                 if line.startswith("Added") or line.startswith("No new songs") or line.startswith("No matching"):
                     self.status_label.setText(line)
+                    summary_found = True
                     break
+            if not summary_found:
+                self.status_label.setText("Update completed")
 
     def auto_update(self):
         """Automatic update (runs in background)"""
@@ -502,7 +519,7 @@ class MainWindow(QMainWindow):
             with open('playlist_log.txt', 'a', encoding='utf-8') as f:
                 f.write(result + '\n')
         except Exception as e:
-            print(f"Error writing to log: {e}")
+            logger.error("Error writing to log: %s", e)
 
         # Refresh logs
         self.log_viewer.refresh_logs()
@@ -598,9 +615,6 @@ class MainWindow(QMainWindow):
             layout.addLayout(button_layout)
 
             dialog.setLayout(layout)
-            dialog.show()
-            dialog.raise_()
-            dialog.activateWindow()
             dialog.exec()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to show buy list dialog: {e}")
@@ -627,7 +641,7 @@ class MainWindow(QMainWindow):
             item = self.buy_list_widget.item(i)
             if item.checkState() == Qt.CheckState.Checked:
                 url = item.data(1)
-                QDesktopServices.openUrl(url)
+                QDesktopServices.openUrl(QUrl(url))
 
     def remove_selected_buy_items(self, all_songs, dialog):
         """Remove selected items from buy list"""
@@ -653,10 +667,14 @@ class MainWindow(QMainWindow):
         updated_songs = [(at, url) for at, url in all_songs if at not in to_remove]
 
         # Rewrite file
-        with open('amazon_buy_list.txt', 'w') as f:
-            f.write("Songs not in your library - Amazon search links:\n\n")
-            for artist_title, url in updated_songs:
-                f.write(f"{artist_title}\n{url}\n\n")
+        try:
+            with open('amazon_buy_list.txt', 'w') as f:
+                f.write("Songs not in your library - Amazon search links:\n\n")
+                for artist_title, url in updated_songs:
+                    f.write(f"{artist_title}\n{url}\n\n")
+        except Exception as e:
+            QMessageBox.warning(dialog, "Error", f"Failed to update buy list file: {e}")
+            return
 
         # Update display
         self.populate_buy_list(updated_songs)
@@ -833,7 +851,11 @@ class MainWindow(QMainWindow):
         table = QTableWidget()
         table.setColumnCount(4)
         table.setHorizontalHeaderLabels(["Date", "Type", "Artist", "Song"])
-        table.horizontalHeader().setStretchLastSection(True)
+        table.setWordWrap(True)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
 
         try:
             conn = sqlite3.connect('playlist_history.db')
@@ -848,7 +870,7 @@ class MainWindow(QMainWindow):
                 try:
                     dt = datetime.fromisoformat(date)
                     date_str = dt.strftime('%Y-%m-%d %H:%M')
-                except:
+                except Exception:
                     date_str = date
 
                 # Added songs
@@ -862,7 +884,7 @@ class MainWindow(QMainWindow):
                             title = song
                             artist = "Unknown"
                         entries.append((date_str, "Added", artist, title))
-                except:
+                except Exception:
                     pass
 
                 # Missing songs
@@ -872,7 +894,7 @@ class MainWindow(QMainWindow):
                         artist = song.get('artist', 'Unknown')
                         title = song.get('title', 'Unknown')
                         entries.append((date_str, "Missing", artist, title))
-                except:
+                except Exception:
                     pass
 
             table.setRowCount(len(entries))
@@ -931,7 +953,7 @@ class MainWindow(QMainWindow):
             try:
                 playlist = plex.playlist(playlist_name)
                 tracks = playlist.items()
-            except:
+            except Exception:
                 QMessageBox.warning(self, "Playlist Error", f"Playlist '{playlist_name}' not found.")
                 return
 
@@ -970,6 +992,7 @@ class SystemTrayApp:
     """System tray application wrapper"""
     def __init__(self):
         self.app = QApplication(sys.argv)
+        self.tray_icon = None
         self.app.setApplicationName("Journey FM Playlist Creator")
         self.app.setApplicationVersion("1.0")
         self.app.setOrganizationName("JourneyFM")
@@ -1000,7 +1023,7 @@ class SystemTrayApp:
         tray_menu = QMenu()
 
         show_action = QAction("Show", self.main_window)
-        show_action.triggered.connect(self.main_window.show)
+        show_action.triggered.connect(self.show_main_window)
         tray_menu.addAction(show_action)
 
         update_action = QAction("Update Now", self.main_window)
@@ -1018,12 +1041,19 @@ class SystemTrayApp:
 
         self.tray_icon.show()
 
+    def show_main_window(self):
+        """Restore and focus the main window."""
+        self.main_window.show()
+        self.main_window.setWindowState(
+            self.main_window.windowState() & ~Qt.WindowState.WindowMinimized
+        )
+        self.main_window.raise_()
+        self.main_window.activateWindow()
+
     def tray_activated(self, reason):
         """Handle tray icon activation"""
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
-            self.main_window.show()
-            self.main_window.raise_()
-            self.main_window.activateWindow()
+            self.show_main_window()
 
     def run(self):
         """Run the application"""
@@ -1035,8 +1065,10 @@ def main():
         log.write(f"{datetime.now()}: Starting Journey FM Playlist app...\n")
     print("Starting Journey FM Playlist app...")
     try:
-        if not os.environ.get('DISPLAY'):
-            raise Exception("DISPLAY environment variable not set - no graphical display available")
+        has_x11 = bool(os.environ.get('DISPLAY'))
+        has_wayland = bool(os.environ.get('WAYLAND_DISPLAY'))
+        if os.name != 'nt' and not (has_x11 or has_wayland):
+            raise Exception("No graphical display detected (DISPLAY/WAYLAND_DISPLAY not set)")
         
         print("Initializing GUI...")
         with open('app_log.txt', 'a') as log:
