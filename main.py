@@ -8,6 +8,7 @@ creates a playlist of matching songs, and imports it into Plex.
 """
 
 import time
+import sys
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -33,7 +34,26 @@ PLEX_TOKEN = os.getenv('PLEX_TOKEN', '').strip()
 SERVER_IP = os.getenv('SERVER_IP', '').strip()
 PLAYLIST_NAME = os.getenv('PLAYLIST_NAME', 'Journey FM Holiday').strip()
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+def configure_logging():
+    """Configure logging with safe handlers for pythonw/GUI environments."""
+    log_format = '%(asctime)s - %(levelname)s - %(message)s'
+    handlers = []
+
+    try:
+        handlers.append(logging.FileHandler('playlist_log.txt', encoding='utf-8'))
+    except Exception:
+        pass
+
+    stream = getattr(sys, 'stderr', None) or getattr(sys, 'stdout', None)
+    if stream is not None:
+        handlers.append(logging.StreamHandler(stream))
+
+    logging.basicConfig(level=logging.INFO, format=log_format, handlers=handlers, force=True)
+    for noisy_logger in ('webdriver_manager', 'matplotlib', 'urllib3', 'plexapi'):
+        logging.getLogger(noisy_logger).setLevel(logging.WARNING)
+
+
+configure_logging()
 logger = logging.getLogger(__name__)
 
 def detect_chrome_binary():
