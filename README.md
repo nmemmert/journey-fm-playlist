@@ -7,6 +7,7 @@ Desktop app + script that pulls recently played songs from Journey FM / Spirit F
 - Scrapes recently played songs from:
   - `https://www.myjourneyfm.com/recently-played/`
   - `https://spiritfm.com/ajax/now_playing_history.txt`
+  - `https://www.klove.com/music/songs`
 - Matches tracks in your Plex Music library with title/artist normalization.
 - Creates or updates your configured Plex playlist.
 - Avoids adding duplicates already in the target playlist.
@@ -93,17 +94,19 @@ python journey_fm_app.py
 
 Use the GUI setup wizard (first launch) or edit `config.json` directly.
 
+The Plex token is now stored in your OS credential store via `keyring` when available.
+On Windows this means the app no longer needs to persist `PLEX_TOKEN` in `config.json`.
+
 Example `config.json`:
 
 ```json
 {
-  "PLEX_TOKEN": "your-plex-token",
   "SERVER_IP": "192.168.1.100",
   "PLAYLIST_NAME": "Journey FM Recently Played",
   "AUTO_UPDATE": true,
   "UPDATE_INTERVAL": 15,
   "UPDATE_UNIT": "Minutes",
-  "SELECTED_STATIONS": "journey_fm,spirit_fm"
+  "SELECTED_STATIONS": "journey_fm,spirit_fm,klove"
 }
 ```
 
@@ -112,6 +115,10 @@ You can also provide runtime env vars:
 - `PLEX_TOKEN`
 - `SERVER_IP`
 - `PLAYLIST_NAME`
+- `AUTO_UPDATE`
+- `UPDATE_INTERVAL`
+- `UPDATE_UNIT`
+- `SELECTED_STATIONS`
 
 Optional browser override:
 
@@ -127,20 +134,75 @@ Run one update cycle from CLI:
 python main.py
 ```
 
+## Container Deployment
+
+Container mode is intended for scheduled/headless playlist updates. The container now runs as a long-lived loop and sleeps between syncs instead of relying on restart churn.
+
+1. Create a `.env` file in the project root:
+
+```env
+PLEX_TOKEN=your-plex-token
+SERVER_IP=192.168.1.100
+PLAYLIST_NAME=Journey FM Recently Played
+SELECTED_STATIONS=journey_fm,spirit_fm,klove
+UPDATE_INTERVAL=15
+UPDATE_UNIT=Minutes
+CONTAINER_RUN_MODE=loop
+```
+
+2. Build and run with Docker Compose:
+
+```bash
+docker-compose up -d --build
+```
+
+Podman equivalent:
+
+```bash
+podman compose up -d --build
+```
+
+3. Trigger a one-off run and review logs:
+
+```bash
+docker-compose run --rm -e CONTAINER_RUN_MODE=once journey-fm-playlist
+docker-compose logs -f journey-fm-playlist
+```
+
+Podman equivalent:
+
+```bash
+podman compose run --rm -e CONTAINER_RUN_MODE=once journey-fm-playlist
+podman compose logs -f journey-fm-playlist
+```
+
+Notes:
+
+- The container uses Chromium + chromedriver in headless mode.
+- Runtime state is stored in the named volume mounted at `/data`, so `config.json`, `playlist_history.db`, `playlist_log.txt`, `amazon_buy_list.txt`, and `debug_scrapes/` persist without bind-mounting the repo.
+- GUI (`journey_fm_app.py`) is still intended to run natively on your desktop.
+- In container mode, environment variables are preferred over local config or keyring storage.
+- The Compose file is Podman-friendly because it uses a named volume instead of a source bind mount.
+
 ## GUI Notes
 
 - Minimize-to-tray on close when tray is available.
 - Tray menu supports Show / Update Now / Quit.
 - Auto-update runs on configurable interval.
 - Works on X11 and Wayland Linux sessions.
+- Updated visual style includes a dashboard hero section, richer status chips, and a refreshed control layout.
+- Setup now includes Plex connection testing, keyring-backed token storage, playlist browsing with item counts, music-only filtering, and typed creation of new playlist names.
 
 ## Output Files
 
-- `config.json` - runtime settings shared by GUI and CLI
+- `config.json` - non-secret runtime settings shared by GUI and CLI
 - `playlist_history.db` - update history and statistics data
 - `playlist_log.txt` - GUI update logs
 - `amazon_buy_list.txt` - missing songs with Amazon links
 - `playlist_export.csv` - exported playlist from GUI action
+- `debug_scrapes/` - captured raw station responses for scraper debugging
+
+In container mode these files live under `/data` inside the container volume.
 
 ## Troubleshooting
 
@@ -153,15 +215,18 @@ python main.py
 ## Core Files
 
 - `journey_fm_app.py` - desktop GUI and tray app
-- `main.py` - scraping + Plex update pipeline
+- `main.py` - CLI entrypoint for a single update run
+- `run_container.py` - loop/once runner used by container deployments
+- `journeyfm/` - shared service modules (config, scraper, Plex, history, orchestration)
 - `requirements.txt` - Python dependencies
 - `install.sh` - Linux setup helper
 
 ## Pre-Release Checklist
 
-- Verify `config.json` has valid `PLEX_TOKEN`, `SERVER_IP`, and `PLAYLIST_NAME`.
+- Verify `config.json` has valid `SERVER_IP`, `PLAYLIST_NAME`, and station/schedule settings.
 - Run one CLI update: `python main.py` and confirm songs/history are written.
 - Run GUI update: `python journey_fm_app.py` and verify status/log output updates.
 - Confirm tray behavior (minimize to tray, Show/Update/Quit actions).
 - On Windows/Linux, confirm Chrome/Chromium detection or set `CHROME_BINARY`.
 - Export playlist once and verify `playlist_export.csv` is created.
+- For container mode, run `docker-compose run --rm -e CONTAINER_RUN_MODE=once journey-fm-playlist` and verify logs/history output.

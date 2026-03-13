@@ -11,6 +11,7 @@ __pycache__/
 
 # Logs
 playlist_log.txt
+app_log.txt
 page.html
 
 # Selenium/ChromeDriver
@@ -28,3 +29,7 @@ Thumbs.db
 
 # Environment variables (if you add a .env file later)
 .env
+
+# Debug / local runtime outputs
+debug_scrapes/
+test_live_klove.py
