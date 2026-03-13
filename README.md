@@ -182,6 +182,29 @@ podman compose run --rm -e CONTAINER_RUN_MODE=once journey-fm-playlist
 podman compose logs -f journey-fm-playlist
 ```
 
+## GitHub Container Build
+
+GitHub Actions now builds the container on every pull request to `main` and on every push to `main`.
+Pushes to `main` also publish the image to GitHub Container Registry.
+
+Image location:
+
+```text
+ghcr.io/nmemmert/journey-fm-playlist
+```
+
+Pull with Podman:
+
+```bash
+podman pull ghcr.io/nmemmert/journey-fm-playlist:latest
+```
+
+If the package is private, authenticate first:
+
+```bash
+podman login ghcr.io
+```
+
 Notes:
 
 - The container uses Chromium + chromedriver in headless mode.
