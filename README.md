@@ -138,7 +138,13 @@ python main.py
 
 Container mode is intended for scheduled/headless playlist updates. The container now runs as a long-lived loop and sleeps between syncs instead of relying on restart churn.
 
-1. Create a `.env` file in the project root:
+1. Copy `.env.example` to `.env` and fill in your Plex values.
+
+```bash
+cp .env.example .env
+```
+
+2. Edit `.env` in the project root:
 
 ```env
 PLEX_TOKEN=your-plex-token
@@ -150,7 +156,7 @@ UPDATE_UNIT=Minutes
 CONTAINER_RUN_MODE=loop
 ```
 
-2. Build and run with Docker Compose:
+3. Build and run with Docker Compose:
 
 ```bash
 docker-compose up -d --build
@@ -162,7 +168,7 @@ Podman equivalent:
 podman compose up -d --build
 ```
 
-3. Trigger a one-off run and review logs:
+4. Trigger a one-off run and review logs:
 
 ```bash
 docker-compose run --rm -e CONTAINER_RUN_MODE=once journey-fm-playlist
@@ -183,6 +189,25 @@ Notes:
 - GUI (`journey_fm_app.py`) is still intended to run natively on your desktop.
 - In container mode, environment variables are preferred over local config or keyring storage.
 - The Compose file is Podman-friendly because it uses a named volume instead of a source bind mount.
+
+### Podman Quick Start
+
+On a Podman host, the shortest path is:
+
+```bash
+git clone https://github.com/nmemmert/journey-fm-playlist.git
+cd journey-fm-playlist
+cp .env.example .env
+podman compose up -d --build
+```
+
+Useful follow-up commands:
+
+```bash
+podman compose logs -f journey-fm-playlist
+podman compose run --rm -e CONTAINER_RUN_MODE=once journey-fm-playlist
+podman compose down
+```
 
 ## GUI Notes
 
