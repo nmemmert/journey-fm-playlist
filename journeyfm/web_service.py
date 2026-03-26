@@ -155,7 +155,6 @@ def render_dashboard_html(stats):
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta http-equiv="refresh" content="30" />
     <title><!--TITLE--></title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; background: linear-gradient(135deg, #12163f 0%, #192a66 100%); color: #ffffff; }
