@@ -11,6 +11,7 @@ HISTORY_COLUMNS = {
     "duplicate_count": "INTEGER DEFAULT 0",
     "skipped_count": "INTEGER DEFAULT 0",
     "station_breakdown": "TEXT DEFAULT '[]'",
+    "scraped_songs": "TEXT DEFAULT '[]'",
     "skipped_songs": "TEXT DEFAULT '[]'",
     "error_message": "TEXT DEFAULT ''",
 }
@@ -37,6 +38,10 @@ def init_history_db(db_path=None):
     for column_name, definition in HISTORY_COLUMNS.items():
         if column_name not in existing_columns:
             cursor.execute(f"ALTER TABLE history ADD COLUMN {column_name} {definition}")
+
+    # store scraped song detail for per-song/per-station analysis
+    if 'scraped_songs' not in existing_columns:
+        cursor.execute("ALTER TABLE history ADD COLUMN scraped_songs TEXT DEFAULT '[]'")
     conn.commit()
     conn.close()
 
@@ -50,8 +55,8 @@ def save_history_entry(result, db_path=None):
         INSERT INTO history (
             date, added_count, added_songs, missing_count, missing_songs,
             status, scraped_count, matched_count, duplicate_count, skipped_count,
-            station_breakdown, skipped_songs, error_message
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            station_breakdown, scraped_songs, skipped_songs, error_message
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             datetime.now().isoformat(),
@@ -65,6 +70,7 @@ def save_history_entry(result, db_path=None):
             result.get("duplicate_count", 0),
             result.get("skipped_count", 0),
             json.dumps(result.get("station_breakdown", [])),
+            json.dumps(result.get("scraped_songs", [])),
             json.dumps(result.get("skipped_songs", [])),
             result.get("error_message", ""),
         ),

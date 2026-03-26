@@ -117,6 +117,8 @@ def run_update_job(config=None, dry_run=False, persist_history=True, write_buy_l
     songs = scrape_result["songs"]
     result["station_breakdown"] = scrape_result["station_results"]
     result["scraped_count"] = len(songs)
+    # Keep scraped songs for history analytics (song play counts per station)
+    result["scraped_songs"] = songs
 
     try:
         plex = connect_to_plex_server(token, server_ip)

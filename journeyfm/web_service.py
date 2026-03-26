@@ -27,6 +27,7 @@ def load_recent_stats(db_path=None):
         "last_attempted": None,
         "last_success": None,
         "station_counts": {},
+        "song_counts": {},
     }
 
     if not Path(db_path).exists():
@@ -52,16 +53,28 @@ def load_recent_stats(db_path=None):
         stats["last_attempted"] = last_row[0]
         stats["last_success"] = last_row[1]
 
-        c.execute("SELECT station_breakdown FROM history")
+        c.execute("SELECT station_breakdown, scraped_songs FROM history")
         station_rows = c.fetchall()
-        for (station_json,) in station_rows:
+        for station_json, scraped_songs_json in station_rows:
             try:
                 for station in json.loads(station_json or "[]"):
                     if station.get("success"):
                         key = station.get("display_name") or station.get("station") or "Unknown"
                         stats["station_counts"][key] = stats["station_counts"].get(key, 0) + int(station.get("scraped_count", 0))
             except Exception:
-                continue
+                pass
+
+            try:
+                songs = json.loads(scraped_songs_json or "[]")
+                for song in songs:
+                    station_name = song.get("source", "Unknown")
+                    title = song.get("title", "?")
+                    artist = song.get("artist", "?")
+                    key = f"{artist} - {title}"
+                    stats["song_counts"].setdefault(station_name, {})
+                    stats["song_counts"][station_name][key] = stats["song_counts"][station_name].get(key, 0) + 1
+            except Exception:
+                pass
     finally:
         conn.close()
 
@@ -74,6 +87,14 @@ def render_dashboard_html(stats):
         f"<tr><td>{name}</td><td>{count}</td></tr>" for name, count in sorted(stats["station_counts"].items())
     )
     overall_count = sum(stats["station_counts"].values())
+
+    # Build a flattened station-song ranking table for display
+    top_song_rows = []
+    for station_name, songs in sorted(stats.get("song_counts", {}).items()):
+        sorted_songs = sorted(songs.items(), key=lambda kv: kv[1], reverse=True)
+        for song_name, count in sorted_songs[:10]:
+            top_song_rows.append(f"<tr><td>{station_name}</td><td>{song_name}</td><td>{count}</td></tr>")
+    top_song_rows_html = ''.join(top_song_rows) or '<tr><td colspan="3">No song counts yet</td></tr>'
 
     template = """
 <!DOCTYPE html>
@@ -120,6 +141,14 @@ def render_dashboard_html(stats):
             <table>
                 <thead><tr><th>Station</th><th>Scraped this run</th></tr></thead>
                 <tbody><!--STATION_ROWS--></tbody>
+            </table>
+        </div>
+
+        <h3>Top tracks per station (historical play counts)</h3>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Station</th><th>Song</th><th>Count</th></tr></thead>
+                <tbody><!--TOP_SONG_ROWS--></tbody>
             </table>
         </div>
 
@@ -173,6 +202,7 @@ def render_dashboard_html(stats):
         .replace("<!--TOTAL_DUPLICATES-->", f"{stats['total_duplicates']:,}")
         .replace("<!--TOTAL_UPDATES-->", f"{stats['total_updates']:,}")
         .replace("<!--STATION_ROWS-->", station_rows or '<tr><td colspan="2">No station data yet</td></tr>')
+        .replace("<!--TOP_SONG_ROWS-->", top_song_rows_html)
         .replace("<!--LAST_ATTEMPTED-->", stats['last_attempted'] or 'N/A')
         .replace("<!--LAST_SUCCESS-->", stats['last_success'] or 'N/A')
     )
