@@ -6,7 +6,9 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
+from journeyfm.config_store import load_runtime_config
 from journeyfm.paths import data_path
+from journeyfm.update_service import run_update_job
 from journeyfm.config_store import load_runtime_config
 from journeyfm.update_service import run_update_job
 
@@ -81,6 +83,56 @@ def load_recent_stats(db_path=None):
     return stats
 
 
+def load_history_entries(db_path=None, limit=100):
+    db_path = db_path or data_path("playlist_history.db")
+    rows = []
+    if not Path(db_path).exists():
+        return rows
+    conn = sqlite3.connect(db_path)
+    try:
+        c = conn.cursor()
+        c.execute(
+            "SELECT id, date, status, scraped_count, matched_count, added_count, missing_count, duplicate_count, skipped_count, station_breakdown FROM history ORDER BY date DESC LIMIT ?",
+            (limit,)
+        )
+        result = c.fetchall()
+        for r in result:
+            rows.append({
+                "id": r[0],
+                "date": r[1],
+                "status": r[2],
+                "scraped_count": r[3],
+                "matched_count": r[4],
+                "added_count": r[5],
+                "missing_count": r[6],
+                "duplicate_count": r[7],
+                "skipped_count": r[8],
+                "station_breakdown": json.loads(r[9] or '[]'),
+            })
+    except Exception:
+        return []
+    finally:
+        conn.close()
+    return rows
+
+
+def load_buy_list(buy_list_path=None):
+    buy_list_path = buy_list_path or data_path("amazon_buy_list.txt")
+    if not Path(buy_list_path).exists():
+        return []
+    entries = []
+    try:
+        with open(buy_list_path, 'r', encoding='utf-8') as f:
+            lines = [ln.strip() for ln in f if ln.strip()]
+            for ln in lines:
+                if ln.startswith('http'):
+                    continue
+                entries.append(ln)
+    except Exception:
+        return []
+    return entries
+
+
 def render_dashboard_html(stats):
     title = "Journey FM Song Count Command Center"
     station_rows = "".join(
@@ -137,6 +189,9 @@ def render_dashboard_html(stats):
             <button class="tab-button active" data-tab="overview">Overview</button>
             <button class="tab-button" data-tab="stations">Stations</button>
             <button class="tab-button" data-tab="top-songs">Top Songs</button>
+            <button class="tab-button" data-tab="app">App Controls</button>
+            <button class="tab-button" data-tab="buy-list">Buy List</button>
+            <button class="tab-button" data-tab="history">History</button>
             <button class="tab-button" data-tab="raw-api">Raw API</button>
         </div>
 
@@ -167,6 +222,30 @@ def render_dashboard_html(stats):
                 <table>
                     <thead><tr><th>Station</th><th>Song</th><th>Count</th></tr></thead>
                     <tbody><!--TOP_SONG_ROWS--></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="app" class="tab-content">
+            <h3>App Controls (desktop features)</h3>
+            <button class="button" onclick="refreshStats()">Update Playlist</button>
+            <button class="button" onclick="previewStats()" style="margin-left:10px;">Preview Sync</button>
+            <button class="button" onclick="fetchBuyList()" style="margin-left:10px;">Load Buy List</button>
+            <button class="button" onclick="fetchHistory()" style="margin-left:10px;">Load History</button>
+            <div id="app-result" style="margin-top:1rem; color:#d4ebe6;"></div>
+        </div>
+
+        <div id="buy-list" class="tab-content">
+            <h3>Buy List</h3>
+            <ul id="buy-list-items" style="padding-left:16px;"></ul>
+        </div>
+
+        <div id="history" class="tab-content">
+            <h3>Run History</h3>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Date</th><th>Status</th><th>Scraped</th><th>Matched</th><th>Added</th><th>Missing</th><th>Duplicates</th><th>Skipped</th></tr></thead>
+                    <tbody id="history-rows"></tbody>
                 </table>
             </div>
         </div>
@@ -236,12 +315,72 @@ def render_dashboard_html(stats):
                 })
                 .then(function(data) {
                     status.textContent = data.status === 'ok' ? 'Refresh complete' : 'Refresh failed';
+                    document.getElementById('app-result').textContent = JSON.stringify(data.result || data, null, 2);
                     setTimeout(function() { status.textContent = ''; }, 4500);
                     setTimeout(function() { location.reload(); }, 1000);
                 })
                 .catch(function(err) {
                     status.textContent = 'Error: ' + err;
                     setTimeout(function() { status.textContent = ''; }, 6500);
+                });
+        }
+
+        function previewStats() {
+            var status = document.getElementById('refresh-status');
+            status.textContent = 'Previewing ...';
+            fetch('/api/preview')
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    status.textContent = 'Preview complete';
+                    document.getElementById('app-result').textContent = JSON.stringify(data, null, 2);
+                    setTimeout(function() { status.textContent = ''; }, 4500);
+                })
+                .catch(function(err) {
+                    status.textContent = 'Error: ' + err;
+                    setTimeout(function() { status.textContent = ''; }, 6500);
+                });
+        }
+
+        function fetchBuyList() {
+            fetch('/api/buy-list')
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    var container = document.getElementById('buy-list-items');
+                    container.innerHTML = '';
+                    data.forEach(function(item) {
+                        var li = document.createElement('li');
+                        li.textContent = item;
+                        container.appendChild(li);
+                    });
+                    document.getElementById('app-result').textContent = 'Loaded buy list (' + data.length + ' items).';
+                })
+                .catch(function(err) {
+                    document.getElementById('app-result').textContent = 'Error loading buy list: ' + err;
+                });
+        }
+
+        function fetchHistory() {
+            fetch('/api/history')
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    var rows = document.getElementById('history-rows');
+                    rows.innerHTML = '';
+                    data.forEach(function(item) {
+                        var tr = document.createElement('tr');
+                        tr.innerHTML = '<td>' + item.date + '</td>' +
+                            '<td>' + item.status + '</td>' +
+                            '<td>' + item.scraped_count + '</td>' +
+                            '<td>' + item.matched_count + '</td>' +
+                            '<td>' + item.added_count + '</td>' +
+                            '<td>' + item.missing_count + '</td>' +
+                            '<td>' + item.duplicate_count + '</td>' +
+                            '<td>' + item.skipped_count + '</td>';
+                        rows.appendChild(tr);
+                    });
+                    document.getElementById('app-result').textContent = 'Loaded history (' + data.length + ' rows).';
+                })
+                .catch(function(err) {
+                    document.getElementById('app-result').textContent = 'Error loading history: ' + err;
                 });
         }
     </script>
@@ -289,6 +428,57 @@ def _build_handler(stats_supplier):
                     result = run_update_job(load_runtime_config())
                     response = {"status": "ok", "result": result}
                     content = json.dumps(response, default=str).encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Content-Length", str(len(content)))
+                    self.end_headers()
+                    self.wfile.write(content)
+                except Exception as exc:
+                    response = {"status": "error", "message": str(exc)}
+                    content = json.dumps(response, default=str).encode("utf-8")
+                    self.send_response(500)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Content-Length", str(len(content)))
+                    self.end_headers()
+                    self.wfile.write(content)
+            elif self.path == "/api/preview":
+                try:
+                    result = run_update_job(load_runtime_config(), dry_run=True, persist_history=False, write_buy_list=False)
+                    content = json.dumps(result, default=str).encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Content-Length", str(len(content)))
+                    self.end_headers()
+                    self.wfile.write(content)
+                except Exception as exc:
+                    response = {"status": "error", "message": str(exc)}
+                    content = json.dumps(response, default=str).encode("utf-8")
+                    self.send_response(500)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Content-Length", str(len(content)))
+                    self.end_headers()
+                    self.wfile.write(content)
+            elif self.path == "/api/buy-list":
+                try:
+                    entries = load_buy_list()
+                    content = json.dumps(entries, default=str).encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Content-Length", str(len(content)))
+                    self.end_headers()
+                    self.wfile.write(content)
+                except Exception as exc:
+                    response = {"status": "error", "message": str(exc)}
+                    content = json.dumps(response, default=str).encode("utf-8")
+                    self.send_response(500)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Content-Length", str(len(content)))
+                    self.end_headers()
+                    self.wfile.write(content)
+            elif self.path == "/api/history":
+                try:
+                    history = load_history_entries()
+                    content = json.dumps(history, default=str).encode("utf-8")
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
                     self.send_header("Content-Length", str(len(content)))
