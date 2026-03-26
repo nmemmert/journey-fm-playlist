@@ -9,6 +9,7 @@ Features system tray integration, log viewing, and easy setup.
 import sys
 import os
 import logging
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 
@@ -659,6 +660,10 @@ class MainWindow(QMainWindow):
         self.analytics_button = QPushButton("Analytics")
         self.analytics_button.clicked.connect(self.show_analytics)
         button_layout.addWidget(self.analytics_button, 2, 1)
+
+        self.web_dashboard_button = QPushButton("Open Web Dashboard")
+        self.web_dashboard_button.clicked.connect(self.open_web_dashboard)
+        button_layout.addWidget(self.web_dashboard_button, 2, 2)
         
         status_layout.addLayout(button_layout)
 
@@ -1467,6 +1472,20 @@ class MainWindow(QMainWindow):
 
         dialog.setLayout(layout)
         dialog.exec()
+
+    def open_web_dashboard(self):
+        """Launch local web dashboard URL in default browser."""
+        try:
+            from journeyfm.web_service import get_dashboard_url, start_dashboard_server
+
+            host = '127.0.0.1'
+            port = 8765
+            start_dashboard_server(host=host, port=port, open_browser_if_possible=False)
+            qs = get_dashboard_url(host=host, port=port)
+            webbrowser.open(qs)
+            QMessageBox.information(self, 'Web Dashboard', f'Web dashboard started at:\n{qs}')
+        except Exception as exc:
+            QMessageBox.warning(self, 'Web Dashboard Failed', f'Unable to start web dashboard: {exc}')
 
     def show_analytics(self):
         """Show analytics dashboard with charts"""

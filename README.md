@@ -134,6 +134,24 @@ Run one update cycle from CLI:
 python main.py
 ```
 
+Run one update cycle and start a local web dashboard for live counts and station metrics:
+
+```bash
+python main.py --serve-web
+```
+
+Advanced options:
+
+- `--host`: Web dashboard listen host (default `127.0.0.1`)
+- `--port`: Web dashboard listen port (default `8765`)
+- `--no-open`: Do not open default browser automatically
+
+Example:
+
+```bash
+python main.py --serve-web --host 0.0.0.0 --port 8765 --no-open
+```
+
 ## Container Deployment
 
 Container mode is intended for scheduled/headless playlist updates. The container now runs as a long-lived loop and sleeps between syncs instead of relying on restart churn.
