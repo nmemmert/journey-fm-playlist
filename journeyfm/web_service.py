@@ -2,6 +2,7 @@ import json
 import sqlite3
 import threading
 import time
+import traceback
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -314,8 +315,13 @@ def render_dashboard_html(stats):
                     return response.json();
                 })
                 .then(function(data) {
-                    status.textContent = data.status === 'ok' ? 'Refresh complete' : 'Refresh failed';
-                    document.getElementById('app-result').textContent = JSON.stringify(data.result || data, null, 2);
+                    if (data.status === 'ok') {
+                        status.textContent = 'Refresh complete';
+                        document.getElementById('app-result').textContent = JSON.stringify(data.result, null, 2);
+                    } else {
+                        status.textContent = 'Refresh failed';
+                        document.getElementById('app-result').textContent = JSON.stringify(data, null, 2);
+                    }
                     setTimeout(function() { status.textContent = ''; }, 4500);
                     setTimeout(function() { location.reload(); }, 1000);
                 })
@@ -434,7 +440,12 @@ def _build_handler(stats_supplier):
                     self.end_headers()
                     self.wfile.write(content)
                 except Exception as exc:
-                    response = {"status": "error", "message": str(exc)}
+                    trace = traceback.format_exc()
+                    response = {
+                        "status": "error",
+                        "message": str(exc),
+                        "trace": trace,
+                    }
                     content = json.dumps(response, default=str).encode("utf-8")
                     self.send_response(500)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
