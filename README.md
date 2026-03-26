@@ -81,6 +81,31 @@ Quick setup:
 ./install.sh
 ```
 
+Interactive install now captures defaults and writes `.env` (auto with optional values):
+
+```bash
+./install.sh
+```
+
+The installer sets defaults:
+- UPDATE_UNIT=Minutes
+- CONTAINER_RUN_MODE=loop
+- SERVER_IP=172.16.16.106
+- PLAYLIST_NAME=Radio
+- SELECTED_STATIONS=journey_fm,spirit_fm,klove
+- UPDATE_INTERVAL=15
+- AUTO_UPDATE=true
+- PLEX_TOKEN=pU-m3HWYUZU6iXJFhJyA
+- PYTHONUNBUFFERED=1
+- JOURNEYFM_DATA_DIR=/data
+- TERM=xterm
+- CHROME_BINARY=/usr/bin/chromium
+- JOURNEYFM_CONTAINER=1
+- LANG=C.UTF-8
+- CHROMEDRIVER_PATH=/usr/bin/chromedriver
+
+Web dashboard defaults to enabled with start at http://localhost:8765 (or `DASHBOARD_PORT`).
+
 Manual setup:
 
 ```bash

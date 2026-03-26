@@ -5,18 +5,27 @@ services:
       dockerfile: Dockerfile
     container_name: journey-fm-playlist
     restart: unless-stopped
+    ports:
+      - "8765:8765"
     environment:
       PLEX_TOKEN: ${PLEX_TOKEN}
       SERVER_IP: ${SERVER_IP}
       PLAYLIST_NAME: ${PLAYLIST_NAME:-Journey FM Recently Played}
-      SELECTED_STATIONS: ${SELECTED_STATIONS:-journey_fm,spirit_fm}
+      SELECTED_STATIONS: ${SELECTED_STATIONS:-journey_fm,spirit_fm,klove}
       AUTO_UPDATE: ${AUTO_UPDATE:-true}
       UPDATE_INTERVAL: ${UPDATE_INTERVAL:-15}
       UPDATE_UNIT: ${UPDATE_UNIT:-Minutes}
       CONTAINER_RUN_MODE: ${CONTAINER_RUN_MODE:-loop}
+      ENABLE_WEB_DASHBOARD: ${ENABLE_WEB_DASHBOARD:-true}
+      DASHBOARD_PORT: ${DASHBOARD_PORT:-8765}
       CHROME_BINARY: /usr/bin/chromium
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
       JOURNEYFM_DATA_DIR: /data
+      JOURNEYFM_CONTAINER: 1
+      PYTHONUNBUFFERED: 1
+      PYTHONDONTWRITEBYTECODE: 1
+      LANG: C.UTF-8
+      TERM: xterm
     volumes:
       - journey-fm-data:/data
 
