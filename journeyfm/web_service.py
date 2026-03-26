@@ -118,6 +118,11 @@ def render_dashboard_html(stats):
         th { text-transform: uppercase; font-size: .9rem; letter-spacing: .08em; color: #cdd5ff; }
         .footer { margin-top: 2rem; font-size: .9rem; color: #d6d9ff; }
         .button { background: linear-gradient(135deg,#34caff,#5f76ff); color:#fff; border:none; padding:.85rem 1.15rem; border-radius: 9px; text-decoration:none; font-weight:700; display:inline-block; margin-top:1rem; }
+        .tab-bar { margin-bottom: 1rem; }
+        .tab-button { background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.28); color: #ffffff; padding: 8px 14px; margin-right: 6px; border-radius: 8px; cursor: pointer; }
+        .tab-button.active { background: #ffffff; color: #192a66; font-weight: 700; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
         body { opacity: 0; transition: opacity 0.8s ease; }
         body.loaded { opacity: 1; }
         #refresh-status { display: inline-block; margin-left: 10px; color: #a6d8ff; }
@@ -128,28 +133,47 @@ def render_dashboard_html(stats):
         <h1>Journey FM Song Count Command Center</h1>
         <p class="subtitle">Live track count breakdown by station with overall totals and history-driven health metrics.</p>
 
-        <div class="stats-grid">
-            <div class="stat-card"><h2>Overall Find</h2><p><!--OVERALL_COUNT--></p></div>
-            <div class="stat-card"><h2>Total Scraped</h2><p><!--TOTAL_SCRAPED--></p></div>
-            <div class="stat-card"><h2>Total Matched</h2><p><!--TOTAL_MATCHED--></p></div>
-            <div class="stat-card"><h2>Missing / Buy List</h2><p><!--TOTAL_MISSING--></p></div>
-            <div class="stat-card"><h2>Duplicates</h2><p><!--TOTAL_DUPLICATES--></p></div>
-            <div class="stat-card"><h2>Updates Run</h2><p><!--TOTAL_UPDATES--></p></div>
+        <div class="tab-bar">
+            <button class="tab-button active" data-tab="overview">Overview</button>
+            <button class="tab-button" data-tab="stations">Stations</button>
+            <button class="tab-button" data-tab="top-songs">Top Songs</button>
+            <button class="tab-button" data-tab="raw-api">Raw API</button>
         </div>
 
-        <div class="table-wrap">
-            <table>
-                <thead><tr><th>Station</th><th>Scraped this run</th></tr></thead>
-                <tbody><!--STATION_ROWS--></tbody>
-            </table>
+        <div id="overview" class="tab-content active">
+            <div class="stats-grid">
+                <div class="stat-card"><h2>Overall Find</h2><p><!--OVERALL_COUNT--></p></div>
+                <div class="stat-card"><h2>Total Scraped</h2><p><!--TOTAL_SCRAPED--></p></div>
+                <div class="stat-card"><h2>Total Matched</h2><p><!--TOTAL_MATCHED--></p></div>
+                <div class="stat-card"><h2>Missing / Buy List</h2><p><!--TOTAL_MISSING--></p></div>
+                <div class="stat-card"><h2>Duplicates</h2><p><!--TOTAL_DUPLICATES--></p></div>
+                <div class="stat-card"><h2>Updates Run</h2><p><!--TOTAL_UPDATES--></p></div>
+            </div>
         </div>
 
-        <h3>Top tracks per station (historical play counts)</h3>
-        <div class="table-wrap">
-            <table>
-                <thead><tr><th>Station</th><th>Song</th><th>Count</th></tr></thead>
-                <tbody><!--TOP_SONG_ROWS--></tbody>
-            </table>
+        <div id="stations" class="tab-content">
+            <h3>Station totals</h3>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Station</th><th>Scraped this run</th></tr></thead>
+                    <tbody><!--STATION_ROWS--></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="top-songs" class="tab-content">
+            <h3>Top tracks per station (historical play counts)</h3>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Station</th><th>Song</th><th>Count</th></tr></thead>
+                    <tbody><!--TOP_SONG_ROWS--></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="raw-api" class="tab-content">
+            <h3>Raw API snapshot</h3>
+            <pre id="raw-data">Loading…</pre>
         </div>
 
         <div class="footer">
@@ -163,9 +187,42 @@ def render_dashboard_html(stats):
     </div>
 
     <script>
-        window.addEventListener('DOMContentLoaded', function() {
+        function setActiveTab(tabId) {
+            document.querySelectorAll('.tab-button').forEach(function(btn) {
+                btn.classList.toggle('active', btn.dataset.tab === tabId);
+            });
+            document.querySelectorAll('.tab-content').forEach(function(content) {
+                content.classList.toggle('active', content.id === tabId);
+            });
+            if (tabId === 'raw-api') {
+                refreshRawApi();
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
             document.body.classList.add('loaded');
+            document.querySelectorAll('.tab-button').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    setActiveTab(this.dataset.tab);
+                });
+            });
+            setActiveTab('overview');
         });
+
+        function refreshRawApi() {
+            var raw = document.getElementById('raw-data');
+            raw.textContent = 'Loading...';
+            fetch('/api/stats')
+                .then(function(response) {
+                    return response.json();
+                })
+                .then(function(data) {
+                    raw.textContent = JSON.stringify(data, null, 2);
+                })
+                .catch(function(err) {
+                    raw.textContent = 'Error loading API: ' + err;
+                });
+        }
 
         function refreshStats() {
             var status = document.getElementById('refresh-status');
