@@ -69,13 +69,19 @@ def load_recent_stats(db_path=None):
 
             try:
                 songs = json.loads(scraped_songs_json or "[]")
+                if "seen_song_keys" not in stats:
+                    stats["seen_song_keys"] = set()
                 for song in songs:
                     station_name = song.get("source", "Unknown")
                     title = song.get("title", "?")
                     artist = song.get("artist", "?")
-                    key = f"{artist} - {title}"
+                    key = (station_name, artist, title)
+                    if key in stats["seen_song_keys"]:
+                        continue
+                    stats["seen_song_keys"].add(key)
+                    display_key = f"{artist} - {title}"
                     stats["song_counts"].setdefault(station_name, {})
-                    stats["song_counts"][station_name][key] = stats["song_counts"][station_name].get(key, 0) + 1
+                    stats["song_counts"][station_name][display_key] = stats["song_counts"][station_name].get(display_key, 0) + 1
             except Exception:
                 pass
     finally:
