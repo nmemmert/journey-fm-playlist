@@ -177,6 +177,56 @@ Example:
 python main.py --serve-web --host 0.0.0.0 --port 8765 --no-open
 ```
 
+## Dashboard: station and song playback counts
+
+Once the web dashboard is running at `http://localhost:8765`, you'll see:
+
+- station-level scrape totals (`station_breakdown` aggregated)
+- overall count metrics (scraped, matched, added, missing, duplicates)
+- per-station top tracks by play count (history-aware)
+
+### API endpoints
+
+- `GET /api/stats` - returns JSON:
+  - `total_updates`, `total_scraped`, etc.
+  - `station_counts` by station
+  - `song_counts` nested `station -> song -> count`
+- `GET /api/refresh` - triggers a full scrape + playlist update and returns run result
+
+### Force refresh from CLI
+
+```bash
+curl http://localhost:8765/api/refresh
+```
+
+### View raw stats
+
+```bash
+curl http://localhost:8765/api/stats | jq .song_counts
+```
+
+## Update script (docker + podman)
+
+A helper script is now included: `update.sh`
+
+Usage:
+
+```bash
+chmod +x update.sh
+./update.sh
+```
+
+What it does:
+
+1. Detects Docker or Podman (prompts if both are present)
+2. `git pull origin main`
+3. Rebuilds compose images (`docker compose build` or `podman compose build`)
+4. Starts services (`compose up -d`)
+5. Prints `compose ps`
+
+
+## Container Deployment
+
 ## Container Deployment
 
 Container mode is intended for scheduled/headless playlist updates. The container now runs as a long-lived loop and sleeps between syncs instead of relying on restart churn.
