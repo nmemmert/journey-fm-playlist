@@ -48,31 +48,23 @@ def load_recent_stats(db_path=None):
     try:
         c = conn.cursor()
         c.execute(
-            "SELECT COUNT(*), SUM(scraped_count), SUM(matched_count), SUM(added_count),"
+            "SELECT COUNT(*), SUM(matched_count), SUM(added_count),"
             " SUM(missing_count), SUM(duplicate_count), SUM(skipped_count) FROM history"
         )
         row = c.fetchone() or ()
         stats["total_updates"] = int(row[0] or 0)
-        stats["total_scraped"] = int(row[1] or 0)
-        stats["total_matched"] = int(row[2] or 0)
-        stats["total_added"] = int(row[3] or 0)
-        stats["total_missing"] = int(row[4] or 0)
-        stats["total_duplicates"] = int(row[5] or 0)
-        stats["total_skipped"] = int(row[6] or 0)
+        stats["total_matched"] = int(row[1] or 0)
+        stats["total_added"] = int(row[2] or 0)
+        stats["total_missing"] = int(row[3] or 0)
+        stats["total_duplicates"] = int(row[4] or 0)
+        stats["total_skipped"] = int(row[5] or 0)
         c.execute("SELECT MAX(date), MAX(CASE WHEN status='success' THEN date END) FROM history")
         last_row = c.fetchone() or ()
         stats["last_attempted"] = last_row[0]
         stats["last_success"] = last_row[1]
-        c.execute("SELECT station_breakdown, scraped_songs FROM history")
+        c.execute("SELECT scraped_songs FROM history")
         seen = set()
-        for station_json, scraped_songs_json in c.fetchall():
-            try:
-                for s in json.loads(station_json or "[]"):
-                    if s.get("success"):
-                        key = s.get("display_name") or s.get("station") or "Unknown"
-                        stats["station_counts"][key] = stats["station_counts"].get(key, 0) + int(s.get("scraped_count", 0))
-            except Exception:
-                pass
+        for (scraped_songs_json,) in c.fetchall():
             try:
                 for song in json.loads(scraped_songs_json or "[]"):
                     sname = song.get("source", "Unknown")
@@ -87,6 +79,10 @@ def load_recent_stats(db_path=None):
                     stats["song_counts"][sname][dk] = stats["song_counts"][sname].get(dk, 0) + 1
             except Exception:
                 pass
+        # unique song count per station derived from deduped song_counts
+        for sname, songs in stats["song_counts"].items():
+            stats["station_counts"][sname] = len(songs)
+        stats["total_scraped"] = len(seen)
     finally:
         conn.close()
     return stats
