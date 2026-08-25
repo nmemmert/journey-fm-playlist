@@ -68,12 +68,11 @@ def load_recent_stats(db_path=None):
                     sname = song.get("source", "Unknown")
                     title = song.get("title", "?")
                     artist = song.get("artist", "?")
-                    k = (artist, title)
-                    if k not in scraped_seen:
-                        scraped_seen.add(k)
-                        stats["song_counts"].setdefault(sname, {})
-                        dk = f"{artist} - {title}"
-                        stats["song_counts"][sname][dk] = stats["song_counts"][sname].get(dk, 0) + 1
+                    scraped_seen.add((artist, title))
+                    # accumulate play count every scrape (powers Top Songs ranking)
+                    stats["song_counts"].setdefault(sname, {})
+                    dk = f"{artist} - {title}"
+                    stats["song_counts"][sname][dk] = stats["song_counts"][sname].get(dk, 0) + 1
             except Exception:
                 pass
             try:
