@@ -48,41 +48,50 @@ def load_recent_stats(db_path=None):
     try:
         c = conn.cursor()
         c.execute(
-            "SELECT COUNT(*), SUM(matched_count), SUM(added_count),"
-            " SUM(missing_count), SUM(duplicate_count), SUM(skipped_count) FROM history"
+            "SELECT COUNT(*), SUM(added_count), SUM(duplicate_count), SUM(skipped_count) FROM history"
         )
         row = c.fetchone() or ()
         stats["total_updates"] = int(row[0] or 0)
-        stats["total_matched"] = int(row[1] or 0)
-        stats["total_added"] = int(row[2] or 0)
-        stats["total_missing"] = int(row[3] or 0)
-        stats["total_duplicates"] = int(row[4] or 0)
-        stats["total_skipped"] = int(row[5] or 0)
+        stats["total_added"] = int(row[1] or 0)
+        stats["total_duplicates"] = int(row[2] or 0)
+        stats["total_skipped"] = int(row[3] or 0)
         c.execute("SELECT MAX(date), MAX(CASE WHEN status='success' THEN date END) FROM history")
         last_row = c.fetchone() or ()
         stats["last_attempted"] = last_row[0]
         stats["last_success"] = last_row[1]
-        c.execute("SELECT scraped_songs FROM history")
-        seen = set()
-        for (scraped_songs_json,) in c.fetchall():
+        c.execute("SELECT scraped_songs, missing_songs FROM history")
+        scraped_seen = set()
+        missing_seen = set()
+        for scraped_songs_json, missing_songs_json in c.fetchall():
             try:
                 for song in json.loads(scraped_songs_json or "[]"):
                     sname = song.get("source", "Unknown")
                     title = song.get("title", "?")
                     artist = song.get("artist", "?")
-                    k = (sname, artist, title)
-                    if k in seen:
-                        continue
-                    seen.add(k)
+                    scraped_seen.add((artist, title))
+                    # accumulate play count every scrape (powers Top Songs ranking)
                     stats["song_counts"].setdefault(sname, {})
                     dk = f"{artist} - {title}"
                     stats["song_counts"][sname][dk] = stats["song_counts"][sname].get(dk, 0) + 1
             except Exception:
                 pass
-        # unique song count per station derived from deduped song_counts
+            try:
+                for song in json.loads(missing_songs_json or "[]"):
+                    artist = song.get("artist", "?")
+                    title = song.get("title", "?")
+                    missing_seen.add((artist, title))
+            except Exception:
+                pass
         for sname, songs in stats["song_counts"].items():
             stats["station_counts"][sname] = len(songs)
-        stats["total_scraped"] = len(seen)
+        stats["total_scraped"] = len(scraped_seen)
+        stats["total_missing"] = len(missing_seen)
+        # matched from most recent successful run (per-run count is accurate)
+        c.execute(
+            "SELECT matched_count FROM history WHERE status='success' ORDER BY date DESC LIMIT 1"
+        )
+        r = c.fetchone()
+        stats["total_matched"] = int(r[0] or 0) if r else 0
     finally:
         conn.close()
     return stats
@@ -433,7 +442,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:var(--sf2)}
     <div id="sec-overview" class="sec active">
       <div class="sg">
         <div class="sc"><div class="sl">Scraped</div><div class="sv cb" id="v-sc">—</div></div>
-        <div class="sc"><div class="sl">Matched</div><div class="sv cg" id="v-ma">—</div></div>
+        <div class="sc"><div class="sl">Matched (last run)</div><div class="sv cg" id="v-ma">—</div></div>
         <div class="sc"><div class="sl">Added</div><div class="sv ca" id="v-ad">—</div></div>
         <div class="sc"><div class="sl">Missing</div><div class="sv cr" id="v-mi">—</div></div>
         <div class="sc"><div class="sl">Duplicates</div><div class="sv cm" id="v-du">—</div></div>
