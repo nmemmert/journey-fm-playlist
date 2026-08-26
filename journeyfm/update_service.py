@@ -102,8 +102,16 @@ def run_update_job(config=None, dry_run=False, persist_history=True, write_buy_l
 
     token = config.get("PLEX_TOKEN", "").strip()
     server_ip = config.get("SERVER_IP", "").strip()
-    playlist_name = config.get("PLAYLIST_NAME", "Journey FM Recently Played").strip()
     selected_stations = config.get("SELECTED_STATIONS", ["journey_fm", "spirit_fm"])
+
+    # Support PLAYLIST_NAMES (list) or fall back to single PLAYLIST_NAME
+    raw_names = config.get("PLAYLIST_NAMES") or config.get("PLAYLIST_NAME", "Journey FM Recently Played")
+    if isinstance(raw_names, list):
+        playlist_names = [n.strip() for n in raw_names if str(n).strip()]
+    else:
+        playlist_names = [n.strip() for n in str(raw_names).split(",") if n.strip()]
+    if not playlist_names:
+        playlist_names = ["Journey FM Recently Played"]
 
     if not token or not server_ip:
         result["status"] = "error"
@@ -117,13 +125,21 @@ def run_update_job(config=None, dry_run=False, persist_history=True, write_buy_l
     songs = scrape_result["songs"]
     result["station_breakdown"] = scrape_result["station_results"]
     result["scraped_count"] = len(songs)
-    # Keep scraped songs for history analytics (song play counts per station)
     result["scraped_songs"] = songs
 
     try:
         plex = connect_to_plex_server(token, server_ip)
-        playlist_result = create_or_update_playlist(plex, songs, playlist_name, dry_run=dry_run)
-        result.update(playlist_result)
+        # Sync every configured playlist; aggregate results
+        merged = {}
+        for playlist_name in playlist_names:
+            pr = create_or_update_playlist(plex, songs, playlist_name, dry_run=dry_run)
+            if not merged:
+                merged = pr
+            else:
+                merged["added_count"] = merged.get("added_count", 0) + pr.get("added_count", 0)
+                merged["added_songs"] = merged.get("added_songs", []) + pr.get("added_songs", [])
+                merged["duplicate_count"] = merged.get("duplicate_count", 0) + pr.get("duplicate_count", 0)
+        result.update(merged)
         result["missing_count"] = len(result.get("missing_songs", []))
         result["skipped_count"] = len(result.get("skipped_songs", []))
         if write_buy_list and not dry_run:
