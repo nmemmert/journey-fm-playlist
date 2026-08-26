@@ -100,10 +100,35 @@ def run_update_job(config=None, dry_run=False, persist_history=True, write_buy_l
         "skipped_songs": [],
     }
 
+    import json as _json
+
+    # station_key → display name used in song["source"]
+    STATION_SOURCE = {"journey_fm": "Journey FM", "spirit_fm": "Spirit FM", "klove": "K-LOVE"}
+
     token = config.get("PLEX_TOKEN", "").strip()
     server_ip = config.get("SERVER_IP", "").strip()
-    playlist_name = config.get("PLAYLIST_NAME", "Journey FM Recently Played").strip()
-    selected_stations = config.get("SELECTED_STATIONS", ["journey_fm", "spirit_fm"])
+
+    # Build playlist configs: [{name, stations}]
+    playlists_raw = config.get("PLAYLISTS")
+    if playlists_raw:
+        try:
+            playlists = _json.loads(playlists_raw) if isinstance(playlists_raw, str) else playlists_raw
+        except Exception:
+            playlists = []
+    else:
+        playlists = []
+
+    if not playlists:
+        # Fall back to flat PLAYLIST_NAMES / PLAYLIST_NAME + SELECTED_STATIONS
+        raw_names = config.get("PLAYLIST_NAMES") or config.get("PLAYLIST_NAME", "Journey FM Recently Played")
+        if isinstance(raw_names, list):
+            names = raw_names
+        else:
+            names = [n.strip() for n in str(raw_names).split(",") if n.strip()]
+        stations = config.get("SELECTED_STATIONS", ["journey_fm"])
+        if isinstance(stations, str):
+            stations = [s.strip() for s in stations.split(",") if s.strip()]
+        playlists = [{"name": n, "stations": list(stations)} for n in (names or ["Journey FM Recently Played"])]
 
     if not token or not server_ip:
         result["status"] = "error"
@@ -113,17 +138,28 @@ def run_update_job(config=None, dry_run=False, persist_history=True, write_buy_l
     if persist_history:
         init_history_db()
 
-    scrape_result = scrape_recently_played(selected_stations)
-    songs = scrape_result["songs"]
+    # Scrape the union of all stations across all playlists (no duplicate scrapes)
+    all_station_keys = list({s for pl in playlists for s in pl.get("stations", [])})
+    scrape_result = scrape_recently_played(all_station_keys)
+    all_songs = scrape_result["songs"]
     result["station_breakdown"] = scrape_result["station_results"]
-    result["scraped_count"] = len(songs)
-    # Keep scraped songs for history analytics (song play counts per station)
-    result["scraped_songs"] = songs
+    result["scraped_count"] = len(all_songs)
+    result["scraped_songs"] = all_songs
 
     try:
         plex = connect_to_plex_server(token, server_ip)
-        playlist_result = create_or_update_playlist(plex, songs, playlist_name, dry_run=dry_run)
-        result.update(playlist_result)
+        merged = {}
+        for pl in playlists:
+            pl_sources = {STATION_SOURCE.get(s, s) for s in pl.get("stations", [])}
+            pl_songs = [s for s in all_songs if s.get("source", "") in pl_sources] if pl_sources else all_songs
+            pr = create_or_update_playlist(plex, pl_songs, pl["name"], dry_run=dry_run)
+            if not merged:
+                merged = pr
+            else:
+                merged["added_count"] = merged.get("added_count", 0) + pr.get("added_count", 0)
+                merged["added_songs"] = merged.get("added_songs", []) + pr.get("added_songs", [])
+                merged["duplicate_count"] = merged.get("duplicate_count", 0) + pr.get("duplicate_count", 0)
+        result.update(merged)
         result["missing_count"] = len(result.get("missing_songs", []))
         result["skipped_count"] = len(result.get("skipped_songs", []))
         if write_buy_list and not dry_run:

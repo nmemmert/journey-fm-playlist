@@ -186,25 +186,50 @@ def dedup_buy_list(buy_list_path=None):
 # ── Config ────────────────────────────────────────────────────
 
 def get_web_config():
-    config = load_runtime_config()
-    token = config.get("PLEX_TOKEN", "")
-    config["_has_token"] = bool(token)
+    from journeyfm.config_store import _read_config_file, DEFAULT_CONFIG, _normalize_selected_stations
+    # Read config.json directly so the form is consistent in container environments
+    # where env vars override the runtime config (env vars still win at sync time).
+    file_cfg = _read_config_file()
+    config = dict(DEFAULT_CONFIG)
+    config.update({k: v for k, v in file_cfg.items() if k != "PLEX_TOKEN"})
+    config["_has_token"] = bool(get_secret("PLEX_TOKEN"))
     config["PLEX_TOKEN"] = ""
-    stations = config.get("SELECTED_STATIONS", [])
-    if isinstance(stations, str):
-        stations = [s.strip() for s in stations.split(",") if s.strip()]
-    config["SELECTED_STATIONS"] = stations
+    # Parse PLAYLISTS JSON → list of {name, stations}
+    playlists_raw = config.get("PLAYLISTS")
+    if playlists_raw:
+        try:
+            playlists = json.loads(playlists_raw) if isinstance(playlists_raw, str) else playlists_raw
+        except Exception:
+            playlists = []
+    else:
+        playlists = []
+    if not playlists:
+        # Build from flat keys for backward compat
+        raw_names = config.get("PLAYLIST_NAMES") or config.get("PLAYLIST_NAME", "")
+        if isinstance(raw_names, list):
+            names = raw_names
+        else:
+            names = [n.strip() for n in str(raw_names).split(",") if n.strip()]
+        stations = list(_normalize_selected_stations(config.get("SELECTED_STATIONS", [])))
+        playlists = [{"name": n, "stations": stations} for n in names] if names else []
+    config["PLAYLISTS"] = playlists
     return config
 
 
 def save_web_config(data):
     config = {}
     config["SERVER_IP"] = str(data.get("SERVER_IP", "")).strip()
-    config["PLAYLIST_NAME"] = str(data.get("PLAYLIST_NAME", "")).strip()
-    stations = data.get("SELECTED_STATIONS", [])
-    if isinstance(stations, str):
-        stations = [s.strip() for s in stations.split(",") if s.strip()]
-    config["SELECTED_STATIONS"] = stations
+    # PLAYLISTS: list of {name, stations}
+    playlists = data.get("PLAYLISTS", [])
+    if isinstance(playlists, list):
+        clean = [{"name": str(p.get("name", "")).strip(), "stations": list(p.get("stations", []))}
+                 for p in playlists if str(p.get("name", "")).strip()]
+    else:
+        clean = []
+    config["PLAYLISTS"] = json.dumps(clean)
+    config["PLAYLIST_NAME"] = clean[0]["name"] if clean else ""
+    all_stations = list({s for p in clean for s in p.get("stations", [])})
+    config["SELECTED_STATIONS"] = all_stations
     config["AUTO_UPDATE"] = bool(data.get("AUTO_UPDATE", False))
     try:
         config["UPDATE_INTERVAL"] = int(data.get("UPDATE_INTERVAL", 15))
@@ -218,11 +243,14 @@ def save_web_config(data):
 
 # ── Playlist ──────────────────────────────────────────────────
 
-def get_playlist_tracks():
+def get_playlist_tracks(name=None):
     from journeyfm.plex_service import connect_to_plex_server
     config = load_runtime_config()
     plex = connect_to_plex_server(config.get("PLEX_TOKEN", ""), config.get("SERVER_IP", ""))
-    name = config.get("PLAYLIST_NAME", "")
+    if not name:
+        cfg = get_web_config()
+        names = cfg.get("PLAYLIST_NAMES") or []
+        name = names[0] if names else config.get("PLAYLIST_NAME", "")
     playlist = plex.playlist(name)
     tracks = []
     for item in playlist.items():
@@ -538,6 +566,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:var(--sf2)}
         <div class="th">
           <span class="tht" id="pl-ttl">Playlist</span>
           <span class="mono cm" id="pl-ct" style="font-size:.74rem"></span>
+          <select class="fin" id="pl-sel" onchange="loadPlaylist()" style="max-width:200px;display:none"></select>
           <input class="fin" type="search" id="plq" placeholder="Search…" oninput="filterPL()">
           <button class="btn bts" id="pl-btn" onclick="loadPlaylist()" style="font-size:.78rem">
             <span class="bl">↺ Load</span><span class="spin"></span>
@@ -578,22 +607,11 @@ tr:last-child td{border-bottom:none}tr:hover td{background:var(--sf2)}
         </div>
       </div>
       <div class="sgrp">
-        <div class="sgh">Playlist</div>
+        <div class="sgh">Playlists &amp; Stations</div>
         <div class="sgb">
-          <div class="fl">
-            <label class="fl-l" for="f-pl">Playlist Name</label>
-            <input class="fi" id="f-pl" type="text" placeholder="Journey FM Recently Played">
-          </div>
-        </div>
-      </div>
-      <div class="sgrp">
-        <div class="sgh">Stations</div>
-        <div class="sgb">
-          <div class="stc">
-            <label class="ck"><input type="checkbox" id="st-j" value="journey_fm"><span>Journey FM</span><span class="ck-m">myjourneyfm.com</span></label>
-            <label class="ck"><input type="checkbox" id="st-s" value="spirit_fm"><span>Spirit FM</span><span class="ck-m">spiritfm.com</span></label>
-            <label class="ck"><input type="checkbox" id="st-k" value="klove"><span>K-LOVE</span><span class="ck-m">klove.com</span></label>
-          </div>
+          <div class="fl-h" style="margin-bottom:.5rem">Each playlist syncs songs from its own set of stations.</div>
+          <div id="pl-list" style="display:flex;flex-direction:column;gap:.7rem"></div>
+          <button class="btn btg" style="align-self:flex-start;margin-top:.3rem;font-size:.8rem" onclick="addPlaylistRow({name:'',stations:[]})">+ Add Playlist</button>
         </div>
       </div>
       <div class="sgrp">
@@ -658,6 +676,7 @@ function go(s){
   if(s==='songs'&&!songsReady&&statsData)buildSongs();
   if(s==='history'&&!histReady)loadHist();
   if(s==='buylist'&&!buyReady)loadBuy();
+  if(s==='playlist')initPlaylistSel();
   if(s==='settings')loadCfg();
 }
 
@@ -887,9 +906,21 @@ function copyAllLinks(){
 }
 
 // ── Playlist ──────────────────────────────────────────────────
+function initPlaylistSel(){
+  fetch('/api/config').then(r=>r.json()).then(cfg=>{
+    const pls=cfg.PLAYLISTS||[];
+    const sel=document.getElementById('pl-sel');
+    if(pls.length>1){
+      sel.innerHTML=pls.map(p=>`<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('');
+      sel.style.display='';
+    }else{sel.style.display='none';}
+  });
+}
 function loadPlaylist(){
   const btn=document.getElementById('pl-btn');ld(btn,true);
-  fetch('/api/playlist').then(r=>r.json()).then(d=>{
+  const selEl=document.getElementById('pl-sel');
+  const name=selEl.style.display!=='none'&&selEl.value?'?name='+encodeURIComponent(selEl.value):'';
+  fetch('/api/playlist'+name).then(r=>r.json()).then(d=>{
     ld(btn,false);
     if(d.error){document.getElementById('pl-body').innerHTML=`<tr><td colspan="4"><div class="empty">${esc(d.error)}</div></td></tr>`;return;}
     plData=d.tracks||[];
@@ -936,33 +967,67 @@ function removeTrack(rk,btn){
 }
 
 // ── Settings ──────────────────────────────────────────────────
+const STATION_OPTS=[
+  {key:'journey_fm',label:'Journey FM'},
+  {key:'spirit_fm',label:'Spirit FM'},
+  {key:'klove',label:'K-LOVE'},
+];
+function addPlaylistRow(pl){
+  const name=pl.name||'',sts=pl.stations||[];
+  const wrap=document.createElement('div');
+  wrap.style.cssText='background:var(--sf2);border:1px solid var(--bd);border-radius:10px;padding:.7rem .9rem;display:flex;flex-direction:column;gap:.5rem';
+  const top=document.createElement('div');
+  top.style.cssText='display:flex;gap:.5rem;align-items:center';
+  const inp=document.createElement('input');
+  inp.className='fi pl-name';inp.type='text';inp.placeholder='Playlist name…';inp.value=name;inp.style.flex='1';
+  const del=document.createElement('button');
+  del.className='btn btd';del.style.cssText='font-size:.74rem;padding:.3rem .55rem;flex-shrink:0';
+  del.textContent='✕';del.onclick=()=>wrap.remove();
+  top.appendChild(inp);top.appendChild(del);
+  const cks=document.createElement('div');
+  cks.style.cssText='display:flex;gap:.5rem;flex-wrap:wrap';
+  STATION_OPTS.forEach(opt=>{
+    const lbl=document.createElement('label');
+    lbl.style.cssText='display:inline-flex;align-items:center;gap:.35rem;font-size:.8rem;cursor:pointer;background:var(--sf);border:1px solid var(--bd);border-radius:6px;padding:.25rem .55rem;transition:border-color .15s';
+    lbl.onmouseenter=()=>lbl.style.borderColor='var(--am)';
+    lbl.onmouseleave=()=>lbl.style.borderColor='';
+    const cb=document.createElement('input');
+    cb.type='checkbox';cb.className='pl-st';cb.dataset.key=opt.key;
+    cb.style.accentColor='var(--am)';cb.checked=sts.includes(opt.key);
+    lbl.appendChild(cb);lbl.appendChild(document.createTextNode(opt.label));
+    cks.appendChild(lbl);
+  });
+  wrap.appendChild(top);wrap.appendChild(cks);
+  document.getElementById('pl-list').appendChild(wrap);
+}
+function getPlaylists(){
+  return Array.from(document.querySelectorAll('#pl-list>div')).map(wrap=>{
+    const name=wrap.querySelector('.pl-name')?.value.trim()||'';
+    const stations=Array.from(wrap.querySelectorAll('.pl-st:checked')).map(c=>c.dataset.key);
+    return name?{name,stations}:null;
+  }).filter(Boolean);
+}
 function loadCfg(){
   fetch('/api/config').then(r=>r.json()).then(cfg=>{
     document.getElementById('f-sv').value=cfg.SERVER_IP||'';
-    document.getElementById('f-pl').value=cfg.PLAYLIST_NAME||'';
     document.getElementById('f-au').checked=!!cfg.AUTO_UPDATE;
     document.getElementById('f-in').value=cfg.UPDATE_INTERVAL||15;
     document.getElementById('f-un').value=cfg.UPDATE_UNIT||'Minutes';
-    const sts=cfg.SELECTED_STATIONS||[];
-    document.getElementById('st-j').checked=sts.includes('journey_fm');
-    document.getElementById('st-s').checked=sts.includes('spirit_fm');
-    document.getElementById('st-k').checked=sts.includes('klove');
     const h=document.getElementById('tk-hint');
     h.textContent=cfg._has_token?'✓ Token saved — leave blank to keep it':'No token saved yet';
     h.style.color=cfg._has_token?'var(--gr)':'var(--mt)';
+    const list=document.getElementById('pl-list');list.innerHTML='';
+    const pls=cfg.PLAYLISTS||[];
+    if(pls.length){pls.forEach(p=>addPlaylistRow(p));}
+    else{addPlaylistRow({name:'',stations:['journey_fm']});}
   });
 }
 function doSave(){
   const btn=document.getElementById('save-btn');ld(btn,true);
-  const stations=[];
-  if(document.getElementById('st-j').checked)stations.push('journey_fm');
-  if(document.getElementById('st-s').checked)stations.push('spirit_fm');
-  if(document.getElementById('st-k').checked)stations.push('klove');
   fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     SERVER_IP:document.getElementById('f-sv').value.trim(),
     PLEX_TOKEN:document.getElementById('f-tk').value.trim(),
-    PLAYLIST_NAME:document.getElementById('f-pl').value.trim(),
-    SELECTED_STATIONS:stations,
+    PLAYLISTS:getPlaylists(),
     AUTO_UPDATE:document.getElementById('f-au').checked,
     UPDATE_INTERVAL:parseInt(document.getElementById('f-in').value)||15,
     UPDATE_UNIT:document.getElementById('f-un').value,
@@ -1095,7 +1160,10 @@ def _build_handler(stats_supplier):
                 self._json(load_history_entries())
             elif p == "/api/playlist":
                 try:
-                    self._json(get_playlist_tracks())
+                    from urllib.parse import urlparse, parse_qs
+                    qs = parse_qs(urlparse(self.path).query)
+                    pname = qs.get("name", [None])[0]
+                    self._json(get_playlist_tracks(name=pname))
                 except Exception as exc:
                     self._json({"error": str(exc), "tracks": []})
             else:
