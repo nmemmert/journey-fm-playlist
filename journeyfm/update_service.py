@@ -100,18 +100,35 @@ def run_update_job(config=None, dry_run=False, persist_history=True, write_buy_l
         "skipped_songs": [],
     }
 
+    import json as _json
+
+    # station_key → display name used in song["source"]
+    STATION_SOURCE = {"journey_fm": "Journey FM", "spirit_fm": "Spirit FM", "klove": "K-LOVE"}
+
     token = config.get("PLEX_TOKEN", "").strip()
     server_ip = config.get("SERVER_IP", "").strip()
-    selected_stations = config.get("SELECTED_STATIONS", ["journey_fm", "spirit_fm"])
 
-    # Support PLAYLIST_NAMES (list) or fall back to single PLAYLIST_NAME
-    raw_names = config.get("PLAYLIST_NAMES") or config.get("PLAYLIST_NAME", "Journey FM Recently Played")
-    if isinstance(raw_names, list):
-        playlist_names = [n.strip() for n in raw_names if str(n).strip()]
+    # Build playlist configs: [{name, stations}]
+    playlists_raw = config.get("PLAYLISTS")
+    if playlists_raw:
+        try:
+            playlists = _json.loads(playlists_raw) if isinstance(playlists_raw, str) else playlists_raw
+        except Exception:
+            playlists = []
     else:
-        playlist_names = [n.strip() for n in str(raw_names).split(",") if n.strip()]
-    if not playlist_names:
-        playlist_names = ["Journey FM Recently Played"]
+        playlists = []
+
+    if not playlists:
+        # Fall back to flat PLAYLIST_NAMES / PLAYLIST_NAME + SELECTED_STATIONS
+        raw_names = config.get("PLAYLIST_NAMES") or config.get("PLAYLIST_NAME", "Journey FM Recently Played")
+        if isinstance(raw_names, list):
+            names = raw_names
+        else:
+            names = [n.strip() for n in str(raw_names).split(",") if n.strip()]
+        stations = config.get("SELECTED_STATIONS", ["journey_fm"])
+        if isinstance(stations, str):
+            stations = [s.strip() for s in stations.split(",") if s.strip()]
+        playlists = [{"name": n, "stations": list(stations)} for n in (names or ["Journey FM Recently Played"])]
 
     if not token or not server_ip:
         result["status"] = "error"
@@ -121,18 +138,21 @@ def run_update_job(config=None, dry_run=False, persist_history=True, write_buy_l
     if persist_history:
         init_history_db()
 
-    scrape_result = scrape_recently_played(selected_stations)
-    songs = scrape_result["songs"]
+    # Scrape the union of all stations across all playlists (no duplicate scrapes)
+    all_station_keys = list({s for pl in playlists for s in pl.get("stations", [])})
+    scrape_result = scrape_recently_played(all_station_keys)
+    all_songs = scrape_result["songs"]
     result["station_breakdown"] = scrape_result["station_results"]
-    result["scraped_count"] = len(songs)
-    result["scraped_songs"] = songs
+    result["scraped_count"] = len(all_songs)
+    result["scraped_songs"] = all_songs
 
     try:
         plex = connect_to_plex_server(token, server_ip)
-        # Sync every configured playlist; aggregate results
         merged = {}
-        for playlist_name in playlist_names:
-            pr = create_or_update_playlist(plex, songs, playlist_name, dry_run=dry_run)
+        for pl in playlists:
+            pl_sources = {STATION_SOURCE.get(s, s) for s in pl.get("stations", [])}
+            pl_songs = [s for s in all_songs if s.get("source", "") in pl_sources] if pl_sources else all_songs
+            pr = create_or_update_playlist(plex, pl_songs, pl["name"], dry_run=dry_run)
             if not merged:
                 merged = pr
             else:
